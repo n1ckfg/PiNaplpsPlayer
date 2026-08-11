@@ -47,9 +47,13 @@ namespace Pinopticon {
     // https://github.com/bakercp/ofxHTTP/blob/master/libs/ofxHTTP/src/WebSocketConnection.cpp
     // events: connect, open, close, idle, message, broadcast        
     template <class ListenerClass>
-    void setupWsServer(ListenerClass* listener, ofxHTTP::SimpleWebSocketServer& wsServer, int wsPort) {
+    void setupWsServer(ListenerClass* listener, ofxHTTP::SimpleWebSocketServer& wsServer, int wsPort, size_t bufferSize = ofxHTTP::WebSocketRouteSettings::DEFAULT_BUFFER_SIZE) {
         ofxHTTP::SimpleWebSocketServerSettings wsSettings;
         wsSettings.setPort(wsPort);
+        // Poco reads each frame into a buffer this size and drops anything that
+        // won't fit, so an app receiving more than short messages has to raise
+        // it. The default is 8 KB.
+        wsSettings.webSocketRouteSettings.setBufferSize(bufferSize);
         wsServer.setup(wsSettings);
         wsServer.webSocketRoute().registerWebSocketEvents(listener);
         cout << "\nStarting websocket server..." << endl;

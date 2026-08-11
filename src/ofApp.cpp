@@ -24,6 +24,16 @@ void ofApp::setup() {
 
     updateLayout();
     loadNap(samples[sampleIndex]);
+    napSource = "file";
+
+    // The websocket server starts listening the moment it's set up, so
+    // everything a frame touches has to be ready first.
+    hasIncoming = false;
+    received = 0;
+    connections = 0;
+    hostName = Pinopticon::getHostName();
+
+    Pinopticon::setupWsServer(this, wsServer, WS_PORT, MAX_NAP_BYTES);
 }
 
 //--------------------------------------------------------------
@@ -33,6 +43,28 @@ void ofApp::loadNap(const std::string & filePath) {
     if (!naplps.load(filePath)) return;
 
     // 2. hand the decoded commands to the renderer
+    startDrawing();
+}
+
+//--------------------------------------------------------------
+// The same thing for a drawing that arrived over the network: the bytes are
+// already in hand, so they go straight to the decoder without touching a file.
+void ofApp::showNap(const std::string & napRaw, const std::string & label) {
+    naplps.decode(napRaw);
+
+    if (!naplps.isLoaded()) {
+        ofLogWarning("PiNaplpsPlayer") << "nothing to draw in " << label;
+        return;
+    }
+
+    // decode() doesn't set a file name, and the old one would be a lie.
+    naplps.fileName = label;
+
+    startDrawing();
+}
+
+//--------------------------------------------------------------
+void ofApp::startDrawing() {
     telidon.setup(naplps, drawSize, drawSize);
     telidon.setProgressiveDraw(progressiveDraw);
     telidon.setLabelPoints(labelPoints);
@@ -46,6 +78,26 @@ void ofApp::updateLayout() {
 
 //--------------------------------------------------------------
 void ofApp::update() {
+    // Collect whatever the websocket thread left for us. Only the newest
+    // drawing is kept: a player shows one at a time, so an older frame that
+    // arrived in the same window has already been superseded.
+    NapFrame frame;
+    bool gotOne = false;
+
+    {
+        std::lock_guard<std::mutex> lock(incomingMutex);
+        if (hasIncoming) {
+            frame = incoming;
+            hasIncoming = false;
+            gotOne = true;
+        }
+    }
+
+    if (gotOne) {
+        napSource = frame.source.empty() ? "network" : frame.source;
+        showNap(frame.nap, "(" + napSource + ")");
+    }
+
     telidon.update();
 }
 
@@ -62,6 +114,10 @@ void ofApp::draw() {
         std::string info = naplps.fileName + "\n";
         info += "Telidon " + ofToString(naplps.version) + ", " + ofToString(naplps.cmds.size()) + " commands\n";
         info += telidon.isFinished() ? "finished\n" : "drawing...\n";
+        info += "source: " + napSource + "\n";
+        info += "\n";
+        info += "ws://" + hostName + ":" + ofToString(WS_PORT) + "\n";
+        info += ofToString(connections) + " connected, " + ofToString(received) + " received\n";
         info += "\n";
         info += "arrows: next/prev file\n";
         info += "space:  redraw\n";
@@ -74,6 +130,87 @@ void ofApp::draw() {
 }
 
 //--------------------------------------------------------------
+// Frames from nap-xtz-server arrive in one of three shapes, set by
+// RPI_NAPLPS_FORMAT on that side:
+//
+//   json    {"type":"naplps","source":"slideshow","encoding":"text","naplps":"..."}
+//   base64  the same envelope, with the stream base64'd
+//   raw     the NAPLPS stream on its own, no envelope
+//
+// Anything else on this port -- a camera command meant for one of the other
+// Pinopticon apps, a keepalive -- is not a drawing and is left alone.
+ofApp::NapFrame ofApp::parseNapFrame(const std::string & text) const {
+    NapFrame frame;
+
+    if (text.empty()) return frame;
+
+    // A .nap stream opens with a control byte, never with '{'.
+    if (text[0] != '{') {
+        if (text == "take_photo" || text == "stream_photo" || text == "keepalive") return frame;
+        frame.nap = text;
+        frame.source = "raw";
+        return frame;
+    }
+
+    ofxJSONElement json;
+    if (!json.parse(text)) {
+        ofLogWarning("PiNaplpsPlayer") << "frame wasn't valid JSON";
+        return frame;
+    }
+
+    if (json["type"].asString() != "naplps") return frame;
+
+    frame.source = json["source"].asString();
+
+    // NAPLPS is a 7-bit-safe format, so "text" carries the stream through JSON
+    // intact -- the control bytes travel as \u00xx escapes and come back whole.
+    // "base64" is there for a payload that uses the high half anyway.
+    const std::string payload = json["naplps"].asString();
+    frame.nap = (json["encoding"].asString() == "base64")
+        ? ofxCrypto::base64_decode(payload)
+        : payload;
+
+    return frame;
+}
+
+//--------------------------------------------------------------
+void ofApp::onWebSocketOpenEvent(ofxHTTP::WebSocketEventArgs & evt) {
+    connections++;
+    ofLogNotice("PiNaplpsPlayer") << "websocket opened: " << evt.connection().clientAddress().toString();
+}
+
+//--------------------------------------------------------------
+void ofApp::onWebSocketCloseEvent(ofxHTTP::WebSocketCloseEventArgs & evt) {
+    if (connections > 0) connections--;
+    ofLogNotice("PiNaplpsPlayer") << "websocket closed: " << evt.connection().clientAddress().toString();
+}
+
+//--------------------------------------------------------------
+void ofApp::onWebSocketFrameReceivedEvent(ofxHTTP::WebSocketFrameEventArgs & evt) {
+    const NapFrame frame = parseNapFrame(evt.frame().toString());
+    if (frame.nap.empty()) return;
+
+    ofLogNotice("PiNaplpsPlayer") << "received " << frame.nap.size() << " bytes of NAPLPS"
+                                  << (frame.source.empty() ? "" : " from " + frame.source);
+
+    // Hand it to update(); this is a server thread, not the GL thread.
+    std::lock_guard<std::mutex> lock(incomingMutex);
+    incoming = frame;
+    hasIncoming = true;
+    received++;
+}
+
+//--------------------------------------------------------------
+void ofApp::onWebSocketFrameSentEvent(ofxHTTP::WebSocketFrameEventArgs & evt) {
+    // nothing to do -- the player only listens
+}
+
+//--------------------------------------------------------------
+void ofApp::onWebSocketErrorEvent(ofxHTTP::WebSocketErrorEventArgs & evt) {
+    ofLogWarning("PiNaplpsPlayer") << "websocket error: " << evt.connection().clientAddress().toString();
+}
+
+//--------------------------------------------------------------
 void ofApp::keyPressed(int key) {
     switch (key) {
         case ' ':
@@ -83,11 +220,13 @@ void ofApp::keyPressed(int key) {
         case OF_KEY_DOWN:
             sampleIndex = (sampleIndex + 1) % (int)samples.size();
             loadNap(samples[sampleIndex]);
+            napSource = "file";
             break;
         case OF_KEY_LEFT:
         case OF_KEY_UP:
             sampleIndex = (sampleIndex + (int)samples.size() - 1) % (int)samples.size();
             loadNap(samples[sampleIndex]);
+            napSource = "file";
             break;
         case 'p':
             progressiveDraw = !progressiveDraw;
@@ -119,4 +258,5 @@ void ofApp::dragEvent(ofDragInfo dragInfo) {
     if (dragInfo.files.size() < 1) return;
 
     loadNap(dragInfo.files[0]);
+    napSource = "file";
 }
