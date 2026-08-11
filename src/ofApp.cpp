@@ -1,5 +1,12 @@
 #include "ofApp.h"
 
+#include "Pinopticon.hpp"
+#include "Pinopticon_Http.hpp"
+
+//using namespace cv;
+//using namespace ofxCv;
+using namespace Pinopticon;
+
 //--------------------------------------------------------------
 void ofApp::setup() {
     ofSetWindowTitle("ofxNaplps");

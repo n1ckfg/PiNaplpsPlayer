@@ -10,8 +10,7 @@
 #include "ofxJSONElement.h"
 #include "ofxCrypto.h"
 
-#include "Pinopticon.hpp"
-#include "Pinopticon_Http.hpp"
+
 
 // The largest drawing the player will accept over a websocket, matching
 // RPI_MAX_BYTES on the server. ofxHTTP defaults its websocket buffer to 8 KB,
