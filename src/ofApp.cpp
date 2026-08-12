@@ -10,10 +10,10 @@ using namespace Pinopticon;
 //--------------------------------------------------------------
 void ofApp::setup() {
     ofSetWindowTitle("ofxNaplps");
-    ofSetFrameRate(60);
+    ofSetFrameRate(30);
     //ofSetVerticalSync(true);
     //ofEnableAntiAliasing();
-    ofEnableAlphaBlending();
+    //ofEnableAlphaBlending(); // Alpha disabled for performance
     ofBackground(0);
     ofHideCursor();
 
@@ -29,6 +29,7 @@ void ofApp::setup() {
     progressiveDraw = true;
     labelPoints = false;
     showInfo = false;
+    bFboDirty = true;
 
     updateLayout();
     loadNap(samples[sampleIndex]);
@@ -43,7 +44,7 @@ void ofApp::setup() {
 
     Pinopticon::setupWsServer(this, wsServer, WS_PORT, MAX_NAP_BYTES);
 	
-	fbo.allocate(720, 540, GL_RGBA);
+	fbo.allocate(720, 540, GL_RGB);
 }
 
 //--------------------------------------------------------------
@@ -78,12 +79,14 @@ void ofApp::startDrawing() {
     telidon.setup(naplps, drawSize, drawSize);
     telidon.setProgressiveDraw(progressiveDraw);
     telidon.setLabelPoints(labelPoints);
+    bFboDirty = true;
 }
 
 //--------------------------------------------------------------
 void ofApp::updateLayout() {
 	drawSize = 720; //MIN(ofGetWidth(), ofGetHeight());
 	drawOffset = glm::vec2(0, 540 - 720); //glm::vec2((ofGetWidth() - drawSize) / 2.0f, (ofGetHeight() - drawSize) / 2.0f);
+    bFboDirty = true;
 }
 
 //--------------------------------------------------------------
@@ -109,37 +112,38 @@ void ofApp::update() {
     }
 
     telidon.update();
+
+    if (showInfo) {
+        static std::string lastState = "";
+        std::string currentState = ofToString(connections) + "_" + ofToString(received) + "_" + (telidon.isFinished() ? "1" : "0") + "_" + napSource + "_" + naplps.fileName + "_" + ofToString(progressiveDraw) + "_" + ofToString(labelPoints);
+        if (currentState != lastState) {
+            updateInfoText();
+            lastState = currentState;
+        }
+    }
 }
 
 //--------------------------------------------------------------
 void ofApp::draw() {
-	fbo.begin();
-    ofBackground(0);
+    if (!telidon.isFinished() || bFboDirty) {
+        fbo.begin();
+        ofBackground(0);
 
-    ofPushMatrix();
-    ofTranslate(drawOffset.x, drawOffset.y);
-    telidon.draw();
-    ofPopMatrix();
-	fbo.end();
+        ofPushMatrix();
+        ofTranslate(drawOffset.x, drawOffset.y);
+        telidon.draw();
+        ofPopMatrix();
+        fbo.end();
+
+        if (telidon.isFinished()) {
+            bFboDirty = false;
+        }
+    }
 	
 	fbo.draw(0, 0, 720, 480);
 
     if (showInfo) {
-        std::string info = naplps.fileName + "\n";
-        info += "Telidon " + ofToString(naplps.version) + ", " + ofToString(naplps.cmds.size()) + " commands\n";
-        info += telidon.isFinished() ? "finished\n" : "drawing...\n";
-        info += "source: " + napSource + "\n";
-        info += "\n";
-        info += "ws://" + hostName + ":" + ofToString(WS_PORT) + "\n";
-        info += ofToString(connections) + " connected, " + ofToString(received) + " received\n";
-        info += "\n";
-        info += "arrows: next/prev file\n";
-        info += "space:  redraw\n";
-        info += "p:      progressive draw " + std::string(progressiveDraw ? "on" : "off") + "\n";
-        info += "l:      label points " + std::string(labelPoints ? "on" : "off") + "\n";
-        info += "i:      hide this\n";
-        info += "(or drop a .nap file on the window)";
-        ofDrawBitmapStringHighlight(info, 10, 20);
+        ofDrawBitmapStringHighlight(infoText, 10, 20);
     }
 }
 
@@ -229,6 +233,7 @@ void ofApp::keyPressed(int key) {
     switch (key) {
         case ' ':
             telidon.reset();
+            bFboDirty = true;
             break;
         case OF_KEY_RIGHT:
         case OF_KEY_DOWN:
@@ -245,13 +250,16 @@ void ofApp::keyPressed(int key) {
         case 'p':
             progressiveDraw = !progressiveDraw;
             telidon.setProgressiveDraw(progressiveDraw);
+            bFboDirty = true;
             break;
         case 'l':
             labelPoints = !labelPoints;
             telidon.setLabelPoints(labelPoints);
+            bFboDirty = true;
             break;
         case 'i':
             showInfo = !showInfo;
+            if (showInfo) updateInfoText();
             break;
         case 'f':
             ofToggleFullscreen();
@@ -273,4 +281,22 @@ void ofApp::dragEvent(ofDragInfo dragInfo) {
 
     loadNap(dragInfo.files[0]);
     napSource = "file";
+}
+
+//--------------------------------------------------------------
+void ofApp::updateInfoText() {
+    infoText = naplps.fileName + "\n";
+    infoText += "Telidon " + ofToString(naplps.version) + ", " + ofToString(naplps.cmds.size()) + " commands\n";
+    infoText += telidon.isFinished() ? "finished\n" : "drawing...\n";
+    infoText += "source: " + napSource + "\n";
+    infoText += "\n";
+    infoText += "ws://" + hostName + ":" + ofToString(WS_PORT) + "\n";
+    infoText += ofToString(connections) + " connected, " + ofToString(received) + " received\n";
+    infoText += "\n";
+    infoText += "arrows: next/prev file\n";
+    infoText += "space:  redraw\n";
+    infoText += "p:      progressive draw " + std::string(progressiveDraw ? "on" : "off") + "\n";
+    infoText += "l:      label points " + std::string(labelPoints ? "on" : "off") + "\n";
+    infoText += "i:      hide this\n";
+    infoText += "(or drop a .nap file on the window)";
 }

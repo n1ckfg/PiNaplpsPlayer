@@ -57,6 +57,10 @@ class ofApp : public ofBaseApp {
         bool labelPoints;
         bool showInfo;
 
+        bool bFboDirty;
+        std::string infoText;
+        void updateInfoText();
+
         // ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
         // NETWORK
         //
