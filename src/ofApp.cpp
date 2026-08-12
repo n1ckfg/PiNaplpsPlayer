@@ -9,8 +9,8 @@ using namespace Pinopticon;
 
 //--------------------------------------------------------------
 void ofApp::setup() {
-    ofSetWindowTitle("ofxNaplps");
-    ofSetFrameRate(30);
+    ofSetWindowTitle("PiNaplpsPlayer");
+    ofSetFrameRate(60);
     //ofSetVerticalSync(true);
     //ofEnableAntiAliasing();
     //ofEnableAlphaBlending(); // Alpha disabled for performance
