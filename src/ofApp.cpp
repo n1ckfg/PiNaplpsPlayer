@@ -15,6 +15,7 @@ void ofApp::setup() {
     //ofEnableAntiAliasing();
     ofEnableAlphaBlending();
     ofBackground(0);
+    ofHideCursor();
 
     // the other sample files in bin/data, cycled through with the arrow keys
     samples.push_back("shark.nap");
@@ -27,7 +28,7 @@ void ofApp::setup() {
 
     progressiveDraw = true;
     labelPoints = false;
-    showInfo = true;
+    showInfo = false;
 
     updateLayout();
     loadNap(samples[sampleIndex]);
