@@ -42,7 +42,9 @@ class ofApp : public ofBaseApp {
 
         Naplps naplps;   // the decoder,  ported from naplps.js
         Telidon telidon; // the renderer, ported from TelidonP5.js
-
+	
+		ofFbo fbo;
+	
         std::vector<std::string> samples;
         int sampleIndex;
 

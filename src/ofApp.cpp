@@ -11,8 +11,8 @@ using namespace Pinopticon;
 void ofApp::setup() {
     ofSetWindowTitle("ofxNaplps");
     ofSetFrameRate(60);
-    ofSetVerticalSync(true);
-    ofEnableAntiAliasing();
+    //ofSetVerticalSync(true);
+    //ofEnableAntiAliasing();
     ofEnableAlphaBlending();
     ofBackground(0);
 
@@ -41,6 +41,8 @@ void ofApp::setup() {
     hostName = Pinopticon::getHostName();
 
     Pinopticon::setupWsServer(this, wsServer, WS_PORT, MAX_NAP_BYTES);
+	
+	fbo.allocate(720, 540, GL_RGBA);
 }
 
 //--------------------------------------------------------------
@@ -79,8 +81,8 @@ void ofApp::startDrawing() {
 
 //--------------------------------------------------------------
 void ofApp::updateLayout() {
-    drawSize = MIN(ofGetWidth(), ofGetHeight());
-    drawOffset = glm::vec2((ofGetWidth() - drawSize) / 2.0f, (ofGetHeight() - drawSize) / 2.0f);
+	drawSize = 720; //MIN(ofGetWidth(), ofGetHeight());
+	drawOffset = glm::vec2(0, 540 - 720); //glm::vec2((ofGetWidth() - drawSize) / 2.0f, (ofGetHeight() - drawSize) / 2.0f);
 }
 
 //--------------------------------------------------------------
@@ -110,12 +112,16 @@ void ofApp::update() {
 
 //--------------------------------------------------------------
 void ofApp::draw() {
+	fbo.begin();
     ofBackground(0);
 
     ofPushMatrix();
     ofTranslate(drawOffset.x, drawOffset.y);
     telidon.draw();
     ofPopMatrix();
+	fbo.end();
+	
+	fbo.draw(0, 0, 720, 480);
 
     if (showInfo) {
         std::string info = naplps.fileName + "\n";
