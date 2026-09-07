@@ -174,7 +174,7 @@ void ofApp::draw() {
         }
     }
 	
-	fbo.draw(0, 0, 720, 480);
+	fbo.draw(0, 0, ofGetWidth(), ofGetHeight()); //720, 480);
 
     if (showInfo) {
         ofDrawBitmapStringHighlight(infoText, 10, 20);
