@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<settings>
+    <!-- Dead man's switch. If nothing arrives over the websocket for
+         slide_timeout milliseconds, the player falls back to the .nap files in
+         bin/data, picking a new one at random every slide_interval
+         milliseconds, until a network drawing shows up again.
+         Set slide_timeout to 0 to disable the fallback entirely. -->
+    <slide_timeout>30000</slide_timeout>
+    <slide_interval>10000</slide_interval>
+</settings>

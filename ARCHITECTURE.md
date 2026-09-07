@@ -14,6 +14,19 @@ The core graphics processing is handled by the `ofxNaplps` openFrameworks addon:
 - **`Naplps` (Decoder)**: Parses raw NAPLPS byte streams or `.nap` files into an internal representation of drawing commands.
 - **`Telidon` (Renderer)**: Takes the parsed commands from the decoder and performs the actual OpenGL drawing commands to render the graphics to the screen. It supports progressive drawing (animating the drawing process over time) and point labeling.
 
+### Configuration (`bin/data/settings.xml`)
+Read once in `setup()` via `ofxXmlSettings`, following the same convention as the other Pinopticon apps:
+- **`slide_timeout`** (ms): how long the player waits without a websocket drawing before the dead man's switch engages. `0` disables the fallback.
+- **`slide_interval`** (ms): how often the fallback swaps in a new random drawing.
+
+### Dead Man's Switch
+A player showing a stale drawing looks identical to a crashed one, so `ofApp::checkDeadMansSwitch()` runs every `update()` and watches the clock since the last network frame:
+- After `slide_timeout` ms of silence it sets `slideshowActive` and calls `loadRandomNap()`, which picks a random `.nap` from `bin/data` (never the one already on screen) and loads it.
+- While active it reloads a new random drawing every `slide_interval` ms.
+- The first websocket drawing to arrive clears `slideshowActive` and hands the screen back to the network. Arrow keys and drag-and-drop do the same, so a deliberate choice gets a full timeout on screen before the slideshow resumes.
+
+`scanSamples()` builds the sample list by listing `bin/data` for `.nap` files rather than from a hardcoded list, so both the arrow keys and the switch pick up anything dropped into that directory.
+
 ### Network Layer
 - **WebSocket Server**: Uses `ofxHTTP` (via the `Pinopticon_Http.hpp` wrapper) to run a WebSocket server on a dedicated thread. 
 - **Message Parsing**: Frames can arrive in JSON format (with either raw text or base64 encoded payloads) or as raw NAPLPS streams. The application parses the incoming frames, extracts the NAPLPS data, and places it into a thread-safe incoming queue (`incomingMutex`).
@@ -44,6 +57,7 @@ The project relies on the following openFrameworks addons (as listed in `addons.
 - `ofxSSLManager`
 - `ofxJSON`
 - `ofxCrypto`
+- `ofxXmlSettings`
 
 ## Building on 64-bit Raspberry Pi OS (linuxaarch64)
 

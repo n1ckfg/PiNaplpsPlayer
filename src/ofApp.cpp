@@ -17,13 +17,13 @@ void ofApp::setup() {
     ofBackground(0);
     ofHideCursor();
 
-    // the other sample files in bin/data, cycled through with the arrow keys
-    samples.push_back("shark.nap");
-    samples.push_back("santa.nap");
-    samples.push_back("beer.nap");
-    samples.push_back("haunt.nap");
-    samples.push_back("wast.nap");
-    samples.push_back("email2.nap");
+    settings.loadFile("settings.xml");
+    slideTimeout = settings.getValue("settings:slide_timeout", 30000);
+    slideInterval = settings.getValue("settings:slide_interval", 10000);
+
+    // the sample files in bin/data, cycled through with the arrow keys and
+    // drawn from at random by the dead man's switch
+    scanSamples();
     sampleIndex = 0;
 
     progressiveDraw = true;
@@ -32,7 +32,7 @@ void ofApp::setup() {
     bFboDirty = true;
 
     updateLayout();
-    loadNap(samples[sampleIndex]);
+    if (!samples.empty()) loadNap(samples[sampleIndex]);
     napSource = "file";
 
     // The websocket server starts listening the moment it's set up, so
@@ -41,6 +41,13 @@ void ofApp::setup() {
     received = 0;
     connections = 0;
     hostName = Pinopticon::getHostName();
+
+    // Nothing has arrived yet, so the clock starts now: an app that comes up
+    // with no server on the other end falls back after one timeout.
+    ofSeedRandom();
+    lastMessageTime = ofGetElapsedTimeMillis();
+    lastSlideTime = lastMessageTime;
+    slideshowActive = false;
 
     Pinopticon::setupWsServer(this, wsServer, WS_PORT, MAX_NAP_BYTES);
 	
@@ -55,6 +62,27 @@ void ofApp::loadNap(const std::string & filePath) {
 
     // 2. hand the decoded commands to the renderer
     startDrawing();
+}
+
+//--------------------------------------------------------------
+// Whatever .nap files are in bin/data, in name order -- reading the directory
+// rather than a hardcoded list means a drawing dropped in there is picked up
+// by both the arrow keys and the dead man's switch.
+void ofApp::scanSamples() {
+    samples.clear();
+
+    ofDirectory dir(ofToDataPath("", true));
+    dir.allowExt("nap");
+    dir.sort();
+    dir.listDir();
+
+    for (std::size_t i = 0; i < dir.size(); i++) {
+        samples.push_back(dir.getName(i));
+    }
+
+    if (samples.empty()) {
+        ofLogWarning("PiNaplpsPlayer") << "no .nap files in bin/data";
+    }
 }
 
 //--------------------------------------------------------------
@@ -109,13 +137,19 @@ void ofApp::update() {
     if (gotOne) {
         napSource = frame.source.empty() ? "network" : frame.source;
         showNap(frame.nap, "(" + napSource + ")");
+
+        // The network is alive and back in charge of the screen.
+        lastMessageTime = ofGetElapsedTimeMillis();
+        slideshowActive = false;
     }
+
+    checkDeadMansSwitch();
 
     telidon.update();
 
     if (showInfo) {
         static std::string lastState = "";
-        std::string currentState = ofToString(connections) + "_" + ofToString(received) + "_" + (telidon.isFinished() ? "1" : "0") + "_" + napSource + "_" + naplps.fileName + "_" + ofToString(progressiveDraw) + "_" + ofToString(labelPoints);
+        std::string currentState = ofToString(connections) + "_" + ofToString(received) + "_" + (telidon.isFinished() ? "1" : "0") + "_" + napSource + "_" + naplps.fileName + "_" + ofToString(progressiveDraw) + "_" + ofToString(labelPoints) + "_" + ofToString(slideshowActive);
         if (currentState != lastState) {
             updateInfoText();
             lastState = currentState;
@@ -145,6 +179,50 @@ void ofApp::draw() {
     if (showInfo) {
         ofDrawBitmapStringHighlight(infoText, 10, 20);
     }
+}
+
+//--------------------------------------------------------------
+// Called every frame. While the network is talking to us this does nothing;
+// once it has been quiet for slideTimeout ms it starts the fallback slideshow
+// and keeps it turning over every slideInterval ms. update() clears
+// slideshowActive the moment a real drawing arrives, which ends it.
+void ofApp::checkDeadMansSwitch() {
+    if (slideTimeout <= 0) return; // fallback switched off in settings.xml
+    if (samples.empty()) return;   // nothing to fall back to
+
+    const uint64_t now = ofGetElapsedTimeMillis();
+
+    if (!slideshowActive) {
+        if (now - lastMessageTime < (uint64_t)slideTimeout) return;
+
+        ofLogNotice("PiNaplpsPlayer") << "no drawing in " << slideTimeout
+                                      << "ms, falling back to bin/data";
+        slideshowActive = true;
+        loadRandomNap();
+        return;
+    }
+
+    if (slideInterval > 0 && now - lastSlideTime >= (uint64_t)slideInterval) {
+        loadRandomNap();
+    }
+}
+
+//--------------------------------------------------------------
+// A random file from bin/data, never the one already on screen -- repeating a
+// drawing reads as a frozen player, which is the thing the switch exists to
+// avoid.
+void ofApp::loadRandomNap() {
+    const int count = (int)samples.size();
+    int index = (int)ofRandom(count);
+    if (index >= count) index = count - 1; // ofRandom's top end is inclusive
+
+    if (count > 1 && index == sampleIndex) index = (index + 1) % count;
+
+    sampleIndex = index;
+    lastSlideTime = ofGetElapsedTimeMillis();
+
+    loadNap(samples[sampleIndex]);
+    napSource = "random";
 }
 
 //--------------------------------------------------------------
@@ -237,15 +315,23 @@ void ofApp::keyPressed(int key) {
             break;
         case OF_KEY_RIGHT:
         case OF_KEY_DOWN:
+            if (samples.empty()) break;
             sampleIndex = (sampleIndex + 1) % (int)samples.size();
             loadNap(samples[sampleIndex]);
             napSource = "file";
+            // A hand on the keys outranks the switch: hold this drawing for a
+            // full timeout before the slideshow takes over again.
+            lastMessageTime = ofGetElapsedTimeMillis();
+            slideshowActive = false;
             break;
         case OF_KEY_LEFT:
         case OF_KEY_UP:
+            if (samples.empty()) break;
             sampleIndex = (sampleIndex + (int)samples.size() - 1) % (int)samples.size();
             loadNap(samples[sampleIndex]);
             napSource = "file";
+            lastMessageTime = ofGetElapsedTimeMillis();
+            slideshowActive = false;
             break;
         case 'p':
             progressiveDraw = !progressiveDraw;
@@ -281,6 +367,8 @@ void ofApp::dragEvent(ofDragInfo dragInfo) {
 
     loadNap(dragInfo.files[0]);
     napSource = "file";
+    lastMessageTime = ofGetElapsedTimeMillis();
+    slideshowActive = false;
 }
 
 //--------------------------------------------------------------
@@ -289,6 +377,9 @@ void ofApp::updateInfoText() {
     infoText += "Telidon " + ofToString(naplps.version) + ", " + ofToString(naplps.cmds.size()) + " commands\n";
     infoText += telidon.isFinished() ? "finished\n" : "drawing...\n";
     infoText += "source: " + napSource + "\n";
+    if (slideshowActive) {
+        infoText += "no signal: random every " + ofToString(slideInterval) + "ms\n";
+    }
     infoText += "\n";
     infoText += "ws://" + hostName + ":" + ofToString(WS_PORT) + "\n";
     infoText += ofToString(connections) + " connected, " + ofToString(received) + " received\n";

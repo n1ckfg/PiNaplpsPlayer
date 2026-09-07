@@ -7,3 +7,4 @@ ofxPoco
 ofxSSLManager
 ofxJSON
 ofxCrypto
+ofxXmlSettings

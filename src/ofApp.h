@@ -9,6 +9,7 @@
 #include "ofxHTTP.h"
 #include "ofxJSONElement.h"
 #include "ofxCrypto.h"
+#include "ofxXmlSettings.h"
 
 
 
@@ -36,6 +37,7 @@ class ofApp : public ofBaseApp {
         void dragEvent(ofDragInfo dragInfo);
 
         void loadNap(const std::string & filePath);
+        void scanSamples();
         void showNap(const std::string & napRaw, const std::string & label);
         void startDrawing();
         void updateLayout();
@@ -45,8 +47,30 @@ class ofApp : public ofBaseApp {
 	
 		ofFbo fbo;
 	
+        ofxXmlSettings settings;
+
         std::vector<std::string> samples;
         int sampleIndex;
+
+        // ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
+        // DEAD MAN'S SWITCH
+        //
+        // A player with nothing to play is indistinguishable from a broken
+        // one, so when the network goes quiet for slideTimeout ms the app
+        // falls back to the .nap files sitting in bin/data and shuffles
+        // through them every slideInterval ms. The first network drawing to
+        // arrive takes the screen back.
+        // ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
+
+        void checkDeadMansSwitch();
+        void loadRandomNap();
+
+        int slideTimeout;   // ms of silence before the fallback kicks in; 0 disables it
+        int slideInterval;  // ms between random drawings while it's running
+
+        uint64_t lastMessageTime; // when the last network drawing landed
+        uint64_t lastSlideTime;   // when the last random drawing was loaded
+        bool slideshowActive;
 
         // The NAPLPS unit screen runs from (0,0) to (1,1), so it gets a square
         // of the window, centered.
