@@ -44,3 +44,15 @@ The project relies on the following openFrameworks addons (as listed in `addons.
 - `ofxSSLManager`
 - `ofxJSON`
 - `ofxCrypto`
+
+## Building on 64-bit Raspberry Pi OS (linuxaarch64)
+
+`ofxPoco` ships with openFrameworks but bundles no Poco binaries on Linux — it
+links against the system Poco via `ADDON_LDFLAGS`. Its `addon_config.mk` has
+sections for `linux64`, `linuxarmv6l` and `linuxarmv7l` but **not**
+`linuxaarch64`, so on 64-bit Pi OS no `-lPoco*` flags are emitted and the link
+step fails with hundreds of undefined `Poco::` references (raised through
+`ofxIO`, which uses Poco heavily). `setup.sh` installs `libpoco-dev` and adds
+the missing `linuxaarch64:` section to `addons/ofxPoco/addon_config.mk`; the
+patch is idempotent, and it must be re-applied after a fresh openFrameworks
+checkout since that file lives outside this repo.
