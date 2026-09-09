@@ -7,4 +7,9 @@
          Set slide_timeout to 0 to disable the fallback entirely. -->
     <slide_timeout>30000</slide_timeout>
     <slide_interval>10000</slide_interval>
+    <!-- * -->
+    <shader_name>vhsc</shader_name>
+    <plane_res_x>4</plane_res_x>
+    <plane_res_y>4</plane_res_y>
+    <wireframe>0</wireframe>
 </settings>

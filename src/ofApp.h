@@ -122,4 +122,10 @@ class ofApp : public ofBaseApp {
         int received;
         int connections;
 
+        ofShader shader;
+        string shaderName;
+        ofPlanePrimitive plane;
+        int planeResX, planeResY;
+        bool doWireframe;
+        
 };

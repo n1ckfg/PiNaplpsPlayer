@@ -52,6 +52,24 @@ void ofApp::setup() {
     Pinopticon::setupWsServer(this, wsServer, WS_PORT, MAX_NAP_BYTES);
 	
 	fbo.allocate(720, 540, GL_RGB);
+
+    planeResX = settings.getValue("settings:plane_res_x", 64); 
+    planeResY = settings.getValue("settings:plane_res_y", 64); 
+    shaderName = settings.getValue("settings:shader_name", "vhsc"); 
+    doWireframe = (bool) settings.getValue("settings:wireframe", 0);
+
+#ifdef TARGET_OPENGLES
+    shader.load("shaders/" + shaderName + "_es3");
+#else
+    if (ofIsGLProgrammableRenderer()) {
+        shader.load("shaders/" + shaderName + "_gl3");
+    } else {
+        shader.load("shaders/" + shaderName + "_gl2");        
+    }
+#endif
+
+    plane.set(ofGetWidth(), ofGetHeight(), planeResX, planeResY, OF_PRIMITIVE_TRIANGLES);
+    plane.mapTexCoordsFromTexture(fbo.getTextureReference());
 }
 
 //--------------------------------------------------------------
@@ -160,21 +178,28 @@ void ofApp::update() {
 //--------------------------------------------------------------
 void ofApp::draw() {
     if (!telidon.isFinished() || bFboDirty) {
-        fbo.begin();
+        fbo.getTextureReference().bind();
+        shader.begin(); //fbo.begin();
         ofBackground(0);
 
         ofPushMatrix();
         ofTranslate(drawOffset.x, drawOffset.y);
         telidon.draw();
         ofPopMatrix();
-        fbo.end();
+        shader.end(); //fbo.end();
+        fbo.getTextureReference().bind();
 
         if (telidon.isFinished()) {
             bFboDirty = false;
         }
     }
 	
-	fbo.draw(0, 0, ofGetWidth(), ofGetHeight()); //720, 480);
+	//fbo.draw(0, 0, ofGetWidth(), ofGetHeight()); //720, 480);
+    if (doWireframe) {
+        plane.drawWireframe();
+    } else {
+        plane.draw();
+    }
 
     if (showInfo) {
         ofDrawBitmapStringHighlight(infoText, 10, 20);
