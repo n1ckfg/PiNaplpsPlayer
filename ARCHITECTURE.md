@@ -7,7 +7,7 @@ PiNaplpsPlayer is an openFrameworks application designed to receive and render N
 ### Application Lifecycle (`ofApp`)
 - **`setup()`**: Initializes window settings, loads local `.nap` sample files, sets up an `ofFbo` for rendering, and starts the WebSocket server listening on port 7112.
 - **`update()`**: Safely pulls any new drawing frames off the incoming network queue (protected by a mutex) and pushes them to the decoder. Updates the `Telidon` renderer state.
-- **`draw()`**: Renders the current state of the drawing via the `Telidon` object to an `ofFbo`, which is then scaled and drawn to the screen. Also displays an overlay with current status, connection count, and hotkey information.
+- **`draw()`**: Caches the current state of the drawing by rendering the `Telidon` object to an `ofFbo`. The `ofFbo` is only updated while the drawing is in progress or when marked dirty, reducing GPU load. The cached `ofFbo` is then scaled and drawn to the screen. Also displays an overlay with current status, connection count, and hotkey information.
 
 ### NAPLPS Processing
 The core graphics processing is handled by the `ofxNaplps` openFrameworks addon:
@@ -36,7 +36,7 @@ A player showing a stale drawing looks identical to a crashed one, so `ofApp::ch
 The `src/` directory includes several utility headers under the `Pinopticon` namespace, providing reusable network and utility wrappers:
 - **`Pinopticon.hpp`**: General utilities (hostname resolution, timestamps, image/FBO to buffer conversion).
 - **`Pinopticon_Http.hpp`**: Wrappers for setting up `ofxHTTP` MJPEG streams, POST servers, and WebSocket servers, as well as functions to broadcast data.
-- **`Pinopticon_Osc.hpp`**: Wrappers for setting up and sending messages via `ofxOsc`.
+- **`Pinopticon_Osc.hpp`**: Wrappers for setting up and sending messages via `ofxOsc` (unused in this specific application).
 
 ## Data Flow
 1. **Input**:
@@ -44,7 +44,7 @@ The `src/` directory includes several utility headers under the `Pinopticon` nam
    - **Network**: WebSocket server receives a frame containing NAPLPS data.
 2. **Decoding**: `naplps.decode()` or `naplps.load()` processes the byte stream into drawing commands.
 3. **Rendering Prep**: `telidon.setup()` is initialized with the decoded commands.
-4. **Drawing**: During `ofApp::draw()`, `telidon.draw()` executes the OpenGL commands onto an `ofFbo`, which is presented to the window.
+4. **Drawing**: During `ofApp::draw()`, if the drawing is still in progress or marked dirty, `telidon.draw()` executes the OpenGL commands to update the cached `ofFbo`. The `ofFbo` is then presented to the window.
 
 ## Addons
 The project relies on the following openFrameworks addons (as listed in `addons.make`):
