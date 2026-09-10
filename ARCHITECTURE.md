@@ -13,6 +13,7 @@ PiNaplpsPlayer is an openFrameworks application designed to receive and render N
 The core graphics processing is handled by the `ofxNaplps` openFrameworks addon:
 - **`Naplps` (Decoder)**: Parses raw NAPLPS byte streams or `.nap` files into an internal representation of drawing commands.
 - **`Telidon` (Renderer)**: Takes the parsed commands from the decoder and performs the actual OpenGL drawing commands to render the graphics to the screen. It supports progressive drawing (animating the drawing process over time) and point labeling.
+  Each command tessellates its outline into a pair of cached `ofMesh`es -- triangles for the fill, a line loop or strip for the stroke -- and redraws those until the outline changes, which while a drawing is coming in is once per new point rather than once per frame. It used to build an `ofPath` per command per frame, which is most of a Pi's frame budget once a drawing gets busy.
 
 ### Configuration (`bin/data/settings.xml`)
 Read once in `setup()` via `ofxXmlSettings`, following the same convention as the other Pinopticon apps:
