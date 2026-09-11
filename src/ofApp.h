@@ -52,6 +52,9 @@ class ofApp : public ofBaseApp {
         std::vector<std::string> samples;
         int sampleIndex;
 
+	int fboWidth;
+	int fboHeight;
+
         // ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
         // DEAD MAN'S SWITCH
         //

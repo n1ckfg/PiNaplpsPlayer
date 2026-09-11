@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <settings>
+    <fbo_width>720</fbo_width>
+    <fbo_height>540</fbo_height>
     <!-- Dead man's switch. If nothing arrives over the websocket for
          slide_timeout milliseconds, the player falls back to the .nap files in
          bin/data, picking a new one at random every slide_interval

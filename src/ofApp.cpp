@@ -21,6 +21,9 @@ void ofApp::setup() {
     slideTimeout = settings.getValue("settings:slide_timeout", 30000);
     slideInterval = settings.getValue("settings:slide_interval", 10000);
 
+    fboWidth = settings.getValue("settings:fbo_width", 640);
+    fboHeight = settings.getValue("settings:fbo_height", 480);
+
     // the sample files in bin/data, cycled through with the arrow keys and
     // drawn from at random by the dead man's switch
     scanSamples();
@@ -51,9 +54,9 @@ void ofApp::setup() {
 
     Pinopticon::setupWsServer(this, wsServer, WS_PORT, MAX_NAP_BYTES);
 	
-	fbo.allocate(720, 540, GL_RGB);
+    fbo.allocate(fboWidth, fboHeight, GL_RGB);
 
-    shaderName = settings.getValue("settings:shader_name", "displacement"); 
+    shaderName = settings.getValue("settings:shader_name", "vhsc"); 
 
 #ifdef TARGET_OPENGLES
     shader.load("shaders/" + shaderName + "_es3");
@@ -128,8 +131,8 @@ void ofApp::startDrawing() {
 
 //--------------------------------------------------------------
 void ofApp::updateLayout() {
-	drawSize = 720; //MIN(ofGetWidth(), ofGetHeight());
-	drawOffset = glm::vec2(0, 540 - 720); //glm::vec2((ofGetWidth() - drawSize) / 2.0f, (ofGetHeight() - drawSize) / 2.0f);
+	drawSize = fboWidth; //MIN(ofGetWidth(), ofGetHeight());
+	drawOffset = glm::vec2(0, fboHeight - fboWidth); //glm::vec2((ofGetWidth() - drawSize) / 2.0f, (ofGetHeight() - drawSize) / 2.0f);
     bFboDirty = true;
 }
 
