@@ -7,7 +7,7 @@ PiNaplpsPlayer is an openFrameworks application designed to receive and render N
 ### Application Lifecycle (`ofApp`)
 - **`setup()`**: Initializes window settings, loads local `.nap` sample files, sets up an `ofFbo` for rendering, and starts the WebSocket server listening on port 7112.
 - **`update()`**: Safely pulls any new drawing frames off the incoming network queue (protected by a mutex) and pushes them to the decoder. Updates the `Telidon` renderer state.
-- **`draw()`**: Caches the current state of the drawing by rendering the `Telidon` object to an `ofFbo`. The `ofFbo` is only updated while the drawing is in progress or when marked dirty, reducing GPU load. The cached `ofFbo` is then scaled and drawn to the screen. Also displays an overlay with current status, connection count, and hotkey information.
+- **`draw()`**: Caches the current state of the drawing by rendering the `Telidon` object to an `ofFbo`. The `ofFbo` is only updated while the drawing is in progress or when marked dirty, reducing GPU load. The cached `ofFbo` is then scaled and drawn to the screen through the image-effect shader (see Configuration), which runs every frame on the way out so the `ofFbo` itself stays a clean copy of the drawing. Also displays an overlay with current status, connection count, and hotkey information.
 
 ### NAPLPS Processing
 The core graphics processing is handled by the `ofxNaplps` openFrameworks addon:
@@ -18,6 +18,7 @@ The core graphics processing is handled by the `ofxNaplps` openFrameworks addon:
 Read once in `setup()` via `ofxXmlSettings`, following the same convention as the other Pinopticon apps:
 - **`slide_timeout`** (ms): how long the player waits without a websocket drawing before the dead man's switch engages. `0` disables the fallback.
 - **`slide_interval`** (ms): how often the fallback swaps in a new random drawing.
+- **`shader_name`**: the image effect applied when the `ofFbo` is drawn to the screen. `setup()` loads `bin/data/shaders/<name>_gl3` on the desktop GL 3.2 context (`_es3` under `TARGET_OPENGLES`, `_gl2` on the fixed pipeline). Fragment shaders read the drawing from `uniform sampler2DRect tex0`. If the pair doesn't load, the drawing goes to the screen unprocessed.
 
 ### Dead Man's Switch
 A player showing a stale drawing looks identical to a crashed one, so `ofApp::checkDeadMansSwitch()` runs every `update()` and watches the clock since the last network frame:

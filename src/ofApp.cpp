@@ -52,6 +52,22 @@ void ofApp::setup() {
     Pinopticon::setupWsServer(this, wsServer, WS_PORT, MAX_NAP_BYTES);
 	
 	fbo.allocate(720, 540, GL_RGB);
+
+    shaderName = settings.getValue("settings:shader_name", "displacement"); 
+
+#ifdef TARGET_OPENGLES
+    shader.load("shaders/" + shaderName + "_es3");
+#else
+    if (ofIsGLProgrammableRenderer()) {
+        shader.load("shaders/" + shaderName + "_gl3");
+    } else {
+        shader.load("shaders/" + shaderName + "_gl2");
+    }
+#endif
+
+    if (!shader.isLoaded()) {
+        ofLogWarning("PiNaplpsPlayer") << "shader " << shaderName << " didn't load, drawing without it";
+    }
 }
 
 //--------------------------------------------------------------
@@ -174,7 +190,12 @@ void ofApp::draw() {
         }
     }
 	
+    // The effect goes on as the cached drawing is copied to the screen, not
+    // into the fbo itself, so the fbo stays a clean copy of the drawing. A
+    // shader that didn't load just means the plain drawing.
+    if (shader.isLoaded()) shader.begin();
 	fbo.draw(0, 0, ofGetWidth(), ofGetHeight()); //720, 480);
+    if (shader.isLoaded()) shader.end();
 
     if (showInfo) {
         ofDrawBitmapStringHighlight(infoText, 10, 20);

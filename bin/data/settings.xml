@@ -7,4 +7,8 @@
          Set slide_timeout to 0 to disable the fallback entirely. -->
     <slide_timeout>30000</slide_timeout>
     <slide_interval>10000</slide_interval>
+    <!-- Image effect applied as the drawing goes to the screen: the name of a
+         shader pair in bin/data/shaders, without the _gl3/_es3 suffix. A name
+         that doesn't load leaves the drawing unprocessed. -->
+    <shader_name>vhsc</shader_name>
 </settings>
