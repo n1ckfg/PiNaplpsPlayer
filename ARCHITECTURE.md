@@ -18,7 +18,7 @@ The core graphics processing is handled by the `ofxNaplps` openFrameworks addon:
 Read once in `setup()` via `ofxXmlSettings`, following the same convention as the other Pinopticon apps:
 - **`slide_timeout`** (ms): how long the player waits without a websocket drawing before the dead man's switch engages. `0` disables the fallback.
 - **`slide_interval`** (ms): how often the fallback swaps in a new random drawing.
-- **`shader_name`**: the image effect applied when the `ofFbo` is drawn to the screen. `setup()` loads `bin/data/shaders/<name>_gl3` on the desktop GL 3.2 context (`_es3` under `TARGET_OPENGLES`, `_gl2` on the fixed pipeline). Fragment shaders read the drawing from `uniform sampler2DRect tex0`. If the pair doesn't load, the drawing goes to the screen unprocessed.
+- **`shader_name`**: the image effect applied when the `ofFbo` is drawn to the screen. `setup()` loads `bin/data/shaders/<name>_gl3` on the desktop GL 3.2 context (`_es3` under `TARGET_OPENGLES`, `_gl2` on the fixed pipeline). Fragment shaders read the drawing from `uniform sampler2DRect tex0`, in pixels. The `_es3` pairs are GLSL ES 1.00 instead (no `#version` line, `attribute`/`varying`, `gl_FragColor`), because `ofAppEGLWindow` only creates ES 2 contexts, and they read `uniform sampler2D tex0` in 0..1 coordinates, since ES has no rectangle textures. If the pair doesn't load, the drawing goes to the screen unprocessed.
 
 ### Dead Man's Switch
 A player showing a stale drawing looks identical to a crashed one, so `ofApp::checkDeadMansSwitch()` runs every `update()` and watches the clock since the last network frame:

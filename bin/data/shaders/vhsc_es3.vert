@@ -1,6 +1,5 @@
-#version 310 es
-
-precision mediump float;
+// GLSL ES 1.00, so no #version line: ofAppEGLWindow only makes ES 2 contexts,
+// and a Pi 3's GPU can't go past ES 2 anyway.
 
 // these are for the programmable pipeline system and are passed in
 // by default from OpenFrameworks
@@ -9,13 +8,13 @@ uniform mat4 projectionMatrix;
 uniform mat4 textureMatrix;
 uniform mat4 modelViewProjectionMatrix;
 
-in vec4 position;
-in vec4 color;
-in vec4 normal;
-in vec2 texcoord;
+attribute vec4 position;
+attribute vec4 color;
+attribute vec4 normal;
+attribute vec2 texcoord;
 // this is the end of the default functionality
 
-out vec2 varyingtexcoord;
+varying vec2 varyingtexcoord;
 
 void main()
 {
