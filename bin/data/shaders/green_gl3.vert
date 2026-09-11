@@ -1,4 +1,4 @@
-#version 150
+#version 140
 
 // uniforms are sent from cpu
 // this is built-in values from Processing

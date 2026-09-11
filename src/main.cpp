@@ -18,7 +18,8 @@ int main() {
 #else
 	ofGLFWWindowSettings settings;
 	//settings.setGLVersion(2, 1);
-	settings.setGLVersion(3, 2);
+	//settings.setGLVersion(3, 2);
+	settings.setGLVersion(3, 1);
 	settings.numSamples = 0;
 	//settings.setSize(w, h);
 	settings.windowMode = OF_FULLSCREEN;

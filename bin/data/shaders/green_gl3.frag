@@ -1,4 +1,4 @@
-#version 150
+#version 140
 
 // textures send from Processing main script
 uniform sampler2DRect motion;

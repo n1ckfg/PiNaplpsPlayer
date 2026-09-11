@@ -1,4 +1,4 @@
-#version 150
+#version 140
 
 // these are for the programmable pipeline system and are passed in
 // by default from OpenFrameworks
