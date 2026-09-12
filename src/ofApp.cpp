@@ -29,9 +29,10 @@ void ofApp::setup() {
     scanSamples();
     sampleIndex = 0;
 
+    debugView = (bool) settings.getValue("settings:debug_view", 0); 
     progressiveDraw = true;
-    labelPoints = false;
-    showInfo = false;
+    labelPoints = debugView;
+    showInfo = debugView;
     bFboDirty = true;
 
     updateLayout();

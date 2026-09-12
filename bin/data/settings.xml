@@ -13,4 +13,5 @@
          shader pair in bin/data/shaders, without the _gl3/_es3 suffix. A name
          that doesn't load leaves the drawing unprocessed. -->
     <shader_name>vhsc</shader_name>
+    <debug_view>0</debug_view>
 </settings>

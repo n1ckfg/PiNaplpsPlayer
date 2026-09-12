@@ -80,6 +80,7 @@ class ofApp : public ofBaseApp {
         float drawSize;
         glm::vec2 drawOffset;
 
+        bool debugView;
         bool progressiveDraw;
         bool labelPoints;
         bool showInfo;
