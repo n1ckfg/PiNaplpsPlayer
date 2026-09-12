@@ -308,7 +308,9 @@ void ofApp::onWebSocketCloseEvent(ofxHTTP::WebSocketCloseEventArgs & evt) {
 
 //--------------------------------------------------------------
 void ofApp::onWebSocketFrameReceivedEvent(ofxHTTP::WebSocketFrameEventArgs & evt) {
-    const NapFrame frame = parseNapFrame(evt.frame().toString());
+    std::string payload;
+    evt.frame().readBytes(payload);
+    const NapFrame frame = parseNapFrame(payload);
     if (frame.nap.empty()) return;
 
     ofLogNotice("PiNaplpsPlayer") << "received " << frame.nap.size() << " bytes of NAPLPS"
