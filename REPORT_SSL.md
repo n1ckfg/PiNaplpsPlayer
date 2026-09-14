@@ -45,8 +45,13 @@ The system bundle (`/etc/ssl/certs/ca-certificates.crt`) gets updated through De
 ## Status
 
 - **Build:** `make` succeeds (exit 0, no compiler errors). `bin/PiNaplpsPlayer` was rebuilt after the change.
-- **Runtime:** not verified yet. The shell used for the build had no `DISPLAY`, so the app aborted at GLFW window creation before any poll ran.
-- **To verify:** run the app on the Pi desktop (for example `cd bin && DISPLAY=:0 ./PiNaplpsPlayer`) and wait about 5 seconds for the first poll.
-  - Success: `[notice ] Tezos: cached N drawings from chain`, and the overlay shows `chain: N cached`.
-  - Still failing: `[warning] Tezos: poll failed: ...`
+- **Runtime:** verified. The app ran headless for 45 s under Xvfb:
+  `cd bin && timeout 45 xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX" ./PiNaplpsPlayer`
+  Both polls in that window succeeded with no SSL or `poll failed` warnings:
+  ```
+  [notice ] Tezos: cached 100 drawings from chain
+  [notice ] Tezos: cached 100 drawings from chain
+  ```
+  (Exit code 124 means `timeout` stopped the app, as intended.)
+- **Side note:** 100 is exactly the `limit=100` used in the `/bigmaps/{ptr}/keys` query. If the contract holds more than 100 active keys per big_map, the rest are never fetched. That limit has nothing to do with the SSL problem.
 - The change is not committed, and `ARCHITECTURE.md` has not been updated to mention the CA setup.
