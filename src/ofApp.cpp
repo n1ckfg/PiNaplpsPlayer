@@ -119,7 +119,8 @@ void ofApp::setup() {
         // No bin/data/ssl/cacert.pem ships with the app, and ofSSLManager's fallback
         // context trusts nothing. Use the OS trust store instead.
         ofSSLManager::initializeClient(new Poco::Net::Context(
-            Poco::Net::Context::TLS_CLIENT_USE, "",
+            //Poco::Net::Context::TLS_CLIENT_USE, "",
+            Poco::Net::Context::CLIENT_USE, "",
             Poco::Net::Context::VERIFY_RELAXED, 9, true /* loadDefaultCAs */));
 
         tezosRunning = true;
