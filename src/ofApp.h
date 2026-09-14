@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <mutex>
+#include <thread>
 
 #include "ofMain.h"
 
@@ -31,6 +33,7 @@ class ofApp : public ofBaseApp {
         void setup();
         void update();
         void draw();
+        void exit();
 
         void keyPressed(int key);
         void windowResized(int w, int h);
@@ -128,5 +131,29 @@ class ofApp : public ofBaseApp {
 
 		ofShader shader;
         string shaderName;
+
+        // ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
+        // TEZOS CHAIN READ
+        //
+        // A background thread polls TzKT for NAPLPS drawings stored
+        // on-chain. During Slideshow Mode the player alternates
+        // between local files and chain drawings; a failed or empty
+        // poll is handled silently and the local slideshow continues.
+        // ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
+
+        std::string tzktBase;
+        std::string tezosContract;
+        int tezosPollSeconds;
+        int tezosMaxBytes;
+
+        std::thread tezosThread;
+        std::atomic<bool> tezosRunning{false};
+        std::mutex tezosMutex;
+        std::vector<std::string> tezosDrawings;
+        int tezosDrawingIndex;
+        bool slideshowFromChain;
+
+        void tezosThreadFunc();
+        bool loadChainNap();
 
 };

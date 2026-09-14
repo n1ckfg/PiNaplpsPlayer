@@ -1,11 +1,46 @@
 #include "ofApp.h"
 
+#include <cctype>
+
 #include "Pinopticon.hpp"
 #include "Pinopticon_Http.hpp"
 
 //using namespace cv;
 //using namespace ofxCv;
 using namespace Pinopticon;
+
+// Walk a TzKT JSON value and collect strings that could be NAPLPS data.
+// Tezos `bytes` values arrive hex-encoded; plain `string` values arrive as-is.
+static void collectNaplpsStrings(const ofJson& j, std::vector<std::string>& out, int maxBytes) {
+    if (j.is_string()) {
+        std::string val = j.get<std::string>();
+        if (val.size() < 10) return;
+
+        bool allHex = (val.size() % 2 == 0);
+        if (allHex) {
+            for (char c : val) {
+                if (!std::isxdigit(static_cast<unsigned char>(c))) { allHex = false; break; }
+            }
+        }
+
+        if (allHex && (int)val.size() >= 20) {
+            std::string decoded;
+            decoded.reserve(val.size() / 2);
+            for (std::size_t i = 0; i < val.size(); i += 2) {
+                unsigned int byte = 0;
+                std::sscanf(val.c_str() + i, "%02x", &byte);
+                decoded.push_back(static_cast<char>(byte));
+            }
+            if ((int)decoded.size() <= maxBytes) out.push_back(std::move(decoded));
+        } else if ((int)val.size() <= maxBytes) {
+            out.push_back(val);
+        }
+    } else if (j.is_object()) {
+        for (auto& el : j.items()) collectNaplpsStrings(el.value(), out, maxBytes);
+    } else if (j.is_array()) {
+        for (auto& el : j) collectNaplpsStrings(el, out, maxBytes);
+    }
+}
 
 //--------------------------------------------------------------
 void ofApp::setup() {
@@ -71,6 +106,18 @@ void ofApp::setup() {
 
     if (!shader.isLoaded()) {
         ofLogWarning("PiNaplpsPlayer") << "shader " << shaderName << " didn't load, drawing without it";
+    }
+
+    tezosContract = settings.getValue("settings:tezos_contract", "KT1DypSEV87pwiw6swdYqhDKWRBZ7xfqeS3c");
+    tzktBase = settings.getValue("settings:tzkt_base", "https://api.shadownet.tzkt.io/v1");
+    tezosPollSeconds = settings.getValue("settings:tezos_poll_seconds", 30);
+    tezosMaxBytes = settings.getValue("settings:tezos_max_bytes", 30000);
+    tezosDrawingIndex = 0;
+    slideshowFromChain = false;
+
+    if (!tezosContract.empty()) {
+        tezosRunning = true;
+        tezosThread = std::thread(&ofApp::tezosThreadFunc, this);
     }
 }
 
@@ -212,8 +259,15 @@ void ofApp::draw() {
 // and keeps it turning over every slideInterval ms. update() clears
 // slideshowActive the moment a real drawing arrives, which ends it.
 void ofApp::checkDeadMansSwitch() {
-    if (slideTimeout <= 0) return; // fallback switched off in settings.xml
-    if (samples.empty()) return;   // nothing to fall back to
+    if (slideTimeout <= 0) return;
+
+    bool hasChain;
+    {
+        std::lock_guard<std::mutex> lock(tezosMutex);
+        hasChain = !tezosDrawings.empty();
+    }
+
+    if (samples.empty() && !hasChain) return;
 
     const uint64_t now = ofGetElapsedTimeMillis();
 
@@ -221,14 +275,31 @@ void ofApp::checkDeadMansSwitch() {
         if (now - lastMessageTime < (uint64_t)slideTimeout) return;
 
         ofLogNotice("PiNaplpsPlayer") << "no drawing in " << slideTimeout
-                                      << "ms, falling back to bin/data";
+                                      << "ms, falling back to slideshow";
         slideshowActive = true;
-        loadRandomNap();
+        slideshowFromChain = false;
+        if (!samples.empty()) {
+            loadRandomNap();
+        } else {
+            loadChainNap();
+        }
         return;
     }
 
     if (slideInterval > 0 && now - lastSlideTime >= (uint64_t)slideInterval) {
-        loadRandomNap();
+        if (slideshowFromChain) {
+            if (!loadChainNap()) {
+                if (!samples.empty()) loadRandomNap();
+            }
+            slideshowFromChain = false;
+        } else {
+            if (!samples.empty()) {
+                loadRandomNap();
+            } else {
+                loadChainNap();
+            }
+            slideshowFromChain = hasChain;
+        }
     }
 }
 
@@ -248,6 +319,108 @@ void ofApp::loadRandomNap() {
 
     loadNap(samples[sampleIndex]);
     napSource = "random";
+}
+
+//--------------------------------------------------------------
+bool ofApp::loadChainNap() {
+    std::string nap;
+    {
+        std::lock_guard<std::mutex> lock(tezosMutex);
+        if (tezosDrawings.empty()) return false;
+
+        int count = (int)tezosDrawings.size();
+        int index = (int)ofRandom(count);
+        if (index >= count) index = count - 1;
+        if (count > 1 && index == tezosDrawingIndex) index = (index + 1) % count;
+        tezosDrawingIndex = index;
+        nap = tezosDrawings[index];
+    }
+
+    lastSlideTime = ofGetElapsedTimeMillis();
+    showNap(nap, "(chain)");
+    napSource = "chain";
+    return true;
+}
+
+//--------------------------------------------------------------
+void ofApp::tezosThreadFunc() {
+    for (int i = 0; i < 5 && tezosRunning; i++) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    while (tezosRunning) {
+        std::vector<std::string> found;
+
+        try {
+            ofxHTTP::Client client;
+
+            {
+                std::string url = tzktBase + "/contracts/" + tezosContract + "/bigmaps";
+                ofxHTTP::GetRequest req(url);
+                auto resp = client.execute(req);
+
+                if (resp->isSuccess()) {
+                    ofJson bigmaps = resp->json();
+                    if (bigmaps.is_array()) {
+                        for (auto& bm : bigmaps) {
+                            if (!tezosRunning) break;
+                            if (!bm.contains("ptr") || bm.value("activeKeys", 0) == 0) continue;
+
+                            int ptr = bm["ptr"].get<int>();
+                            std::string keysUrl = tzktBase + "/bigmaps/" + ofToString(ptr)
+                                                  + "/keys?active=true&limit=100";
+                            ofxHTTP::GetRequest keysReq(keysUrl);
+                            auto keysResp = client.execute(keysReq);
+
+                            if (keysResp->isSuccess()) {
+                                ofJson keys = keysResp->json();
+                                if (keys.is_array()) {
+                                    for (auto& entry : keys) {
+                                        if (entry.contains("value")) {
+                                            collectNaplpsStrings(entry["value"], found, tezosMaxBytes);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (found.empty() && tezosRunning) {
+                std::string url = tzktBase + "/contracts/" + tezosContract + "/storage";
+                ofxHTTP::GetRequest req(url);
+                auto resp = client.execute(req);
+
+                if (resp->isSuccess()) {
+                    collectNaplpsStrings(resp->json(), found, tezosMaxBytes);
+                }
+            }
+
+        } catch (const Poco::Exception& e) {
+            ofLogWarning("Tezos") << "poll failed: " << e.displayText();
+        } catch (const std::exception& e) {
+            ofLogWarning("Tezos") << "poll failed: " << e.what();
+        } catch (...) {
+            ofLogWarning("Tezos") << "poll failed";
+        }
+
+        if (!found.empty()) {
+            std::lock_guard<std::mutex> lock(tezosMutex);
+            tezosDrawings = std::move(found);
+            ofLogNotice("Tezos") << "cached " << tezosDrawings.size() << " drawings from chain";
+        }
+
+        for (int i = 0; i < tezosPollSeconds && tezosRunning; i++) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    }
+}
+
+//--------------------------------------------------------------
+void ofApp::exit() {
+    tezosRunning = false;
+    if (tezosThread.joinable()) tezosThread.join();
 }
 
 //--------------------------------------------------------------
@@ -405,7 +578,13 @@ void ofApp::updateInfoText() {
     infoText += telidon.isFinished() ? "finished\n" : "drawing...\n";
     infoText += "source: " + napSource + "\n";
     if (slideshowActive) {
-        infoText += "no signal: random every " + ofToString(slideInterval) + "ms\n";
+        infoText += "no signal: slideshow every " + ofToString(slideInterval) + "ms\n";
+    }
+    {
+        std::lock_guard<std::mutex> lock(tezosMutex);
+        infoText += "chain: " + ofToString(tezosDrawings.size()) + " cached";
+        if (!tezosContract.empty()) infoText += " (polling)";
+        infoText += "\n";
     }
     infoText += "\n";
     infoText += "ws://" + hostName + ":" + ofToString(WS_PORT) + "\n";

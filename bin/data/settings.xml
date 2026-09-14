@@ -14,4 +14,11 @@
          that doesn't load leaves the drawing unprocessed. -->
     <shader_name>vhsc</shader_name>
     <debug_view>0</debug_view>
+    <!-- Tezos chain read: poll TzKT for NAPLPS drawings stored on-chain.
+         During slideshow mode, the player alternates between local files
+         and chain drawings. Set tezos_contract to empty to disable. -->
+    <tezos_contract>KT1DypSEV87pwiw6swdYqhDKWRBZ7xfqeS3c</tezos_contract>
+    <tzkt_base>https://api.shadownet.tzkt.io/v1</tzkt_base>
+    <tezos_poll_seconds>30</tezos_poll_seconds>
+    <tezos_max_bytes>30000</tezos_max_bytes>
 </settings>
