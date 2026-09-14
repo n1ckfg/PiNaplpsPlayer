@@ -1,6 +1,6 @@
 # PiNaplpsPlayer Architecture
 
-PiNaplpsPlayer is an openFrameworks application designed to receive and render NAPLPS (North American Presentation Level Protocol Syntax) graphics. It operates both as a standalone file viewer and as a WebSocket server that can receive live streams of NAPLPS drawings over the network.
+PiNaplpsPlayer is an openFrameworks application designed to receive and render NAPLPS (North American Presentation Level Protocol Syntax) graphics. It operates in two primary modes: **Network Mode**, functioning as a WebSocket server to receive live streams of NAPLPS drawings, and **Slideshow Mode**, acting as a standalone file viewer and fallback when the network is idle.
 
 ## Core Components
 
@@ -16,18 +16,18 @@ The core graphics processing is handled by the `ofxNaplps` openFrameworks addon:
 
 ### Configuration (`bin/data/settings.xml`)
 Read once in `setup()` via `ofxXmlSettings`, following the same convention as the other Pinopticon apps:
-- **`slide_timeout`** (ms): how long the player waits without a websocket drawing before the dead man's switch engages. `0` disables the fallback.
-- **`slide_interval`** (ms): how often the fallback swaps in a new random drawing.
+- **`slide_timeout`** (ms): how long the player waits without a Network Mode drawing before the Dead Man's Switch engages and activates Slideshow Mode. `0` disables the Slideshow Mode fallback.
+- **`slide_interval`** (ms): how often Slideshow Mode swaps in a new random drawing.
 - **`fbo_width`**: the width of the `ofFbo` used for caching the drawing.
 - **`fbo_height`**: the height of the `ofFbo` used for caching the drawing.
 - **`debug_view`**: if `1`, enables the debug overlay and point labels on startup.
 - **`shader_name`**: the image effect applied when the `ofFbo` is drawn to the screen. `setup()` loads `bin/data/shaders/<name>_gl3` on the desktop GL 3.2 context (`_es3` under `TARGET_OPENGLES`, `_gl2` on the fixed pipeline). Fragment shaders read the drawing from `uniform sampler2DRect tex0`, in pixels. The `_es3` pairs are GLSL ES 1.00 instead (no `#version` line, `attribute`/`varying`, `gl_FragColor`), because `ofAppEGLWindow` only creates ES 2 contexts, and they read `uniform sampler2D tex0` in 0..1 coordinates, since ES has no rectangle textures. If the pair doesn't load, the drawing goes to the screen unprocessed.
 
-### Dead Man's Switch
-A player showing a stale drawing looks identical to a crashed one, so `ofApp::checkDeadMansSwitch()` runs every `update()` and watches the clock since the last network frame:
-- After `slide_timeout` ms of silence it sets `slideshowActive` and calls `loadRandomNap()`, which picks a random `.nap` from `bin/data` (never the one already on screen) and loads it.
-- While active it reloads a new random drawing every `slide_interval` ms.
-- The first websocket drawing to arrive clears `slideshowActive` and hands the screen back to the network. Arrow keys and drag-and-drop do the same, so a deliberate choice gets a full timeout on screen before the slideshow resumes.
+### Dead Man's Switch (Slideshow Mode Fallback)
+A player showing a stale drawing looks identical to a crashed one, so `ofApp::checkDeadMansSwitch()` runs every `update()` and watches the clock since the last Network Mode frame:
+- After `slide_timeout` ms of silence, it enters Slideshow Mode (setting `slideshowActive`) and calls `loadRandomNap()`, which picks a random `.nap` from `bin/data` (never the one already on screen) and loads it.
+- While Slideshow Mode is active, it reloads a new random drawing every `slide_interval` ms.
+- The first Network Mode drawing to arrive clears `slideshowActive` and hands the screen back to Network Mode. Arrow keys and drag-and-drop do the same, so a deliberate choice gets a full timeout on screen before Slideshow Mode resumes.
 
 `scanSamples()` builds the sample list by listing `bin/data` for `.nap` files rather than from a hardcoded list, so both the arrow keys and the switch pick up anything dropped into that directory.
 
