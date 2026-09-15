@@ -16,14 +16,22 @@ cd ../../../addons
 #git clone https://github.com/n1ckfg/ofxCvPiCam
 git clone https://github.com/n1ckfg/ofxNaplps
 
-# the websocket server the player listens on (ofxPoco ships with oF)
-git clone https://github.com/n1ckfg/ofxHTTP
-git clone https://github.com/n1ckfg/ofxIO
 git clone https://github.com/n1ckfg/ofxMediaType
 git clone https://github.com/n1ckfg/ofxNetworkUtils
 git clone https://github.com/n1ckfg/ofxSSLManager
 git clone https://github.com/n1ckfg/ofxJSON
-git clone https://github.com/n1ckfg/ofxCrypto
+
+ARCH=$(uname -m)
+echo Architecture is $ARCH.
+if [ "$ARCH" = "aarch64" ]; then
+	git clone -b of_0.12.1 https://github.com/n1ckfg/ofxHTTP
+	git clone -b of_0.12.1 https://github.com/n1ckfg/ofxIO
+	git clone -b of_0.12.1 https://github.com/n1ckfg/ofxCrypto
+else
+        git clone https://github.com/n1ckfg/ofxHTTP
+        git clone https://github.com/n1ckfg/ofxIO
+        git clone https://github.com/n1ckfg/ofxCrypto
+fi
 
 # ofxPoco (bundled with oF 0.12.1) has no linuxaarch64 section in its
 # addon_config.mk, so on 64-bit Pi OS no -lPoco* flags are emitted and every
@@ -53,5 +61,37 @@ with open(path, "w") as f:
 print("patched ofxPoco/addon_config.mk for linuxaarch64")
 PATCH
 fi
+
+# ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ 
+cd $DIR
+
+# Define the path to the header file
+FILE="../../../libs/openFrameworks/types/ofTypes.h"
+
+# Ensure the file exists before trying to modify it
+if [ ! -f "$FILE" ]; then
+    echo "Error: File not found at $FILE"
+    exit 1
+fi
+
+# Check if the file already contains #include <memory>
+if grep -q "#include <memory>" "$FILE"; then
+    echo "The file already contains '#include <memory>'. No changes made."
+else
+    # Check if #include <mutex> exists so we know where to insert
+    if grep -q "#include <mutex>" "$FILE"; then
+        echo "Adding '#include <memory>' after '#include <mutex>'..."
+        
+        # Use sed to append the line after the match
+        sed -i '/#include <mutex>/a #include <memory>' "$FILE"
+        
+        echo "Modification complete."
+    else
+        echo "Error: '#include <mutex>' not found. Could not determine where to insert."
+        exit 1
+    fi
+fi
+
+# ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
 
 cd $DIR
