@@ -9,6 +9,11 @@ if ! dpkg -s libpoco-dev >/dev/null 2>&1; then
     sudo apt-get install -y libpoco-dev
 fi
 
+# ofxI0/src/DirectoryUtils.cpp includes <boost/version.hpp>, requiring libboost-dev
+if ! dpkg -s libboost-dev >/dev/null 2>&1; then
+    sudo apt-get install -y libboost-dev
+fi
+
 DIR=$PWD
 
 cd ../../../addons
@@ -24,7 +29,7 @@ git clone https://github.com/n1ckfg/ofxJSON
 ARCH=$(uname -m)
 echo Architecture is $ARCH.
 if [ "$ARCH" = "aarch64" ]; then
-	git clone -b of_0.12.1 https://github.com/n1ckfg/ofxHTTP
+	git clone -b tezos-chain-trixie https://github.com/n1ckfg/ofxHTTP
 	git clone -b of_0.12.1 https://github.com/n1ckfg/ofxIO
 	git clone -b of_0.12.1 https://github.com/n1ckfg/ofxCrypto
 else
