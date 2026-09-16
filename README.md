@@ -13,3 +13,8 @@
 - Compile with `make` (or for example `make -j4` with at least 4GB RAM).
 - Launch with `./bin/PiNaplpsPlayer`  
 
+### Operation
+- Reads local NAPLPS images files
+- Will attempt to read on-chain images for the contract set in `bin/data/settings.xml` 
+- Will display images sent by nap-xtz server if they share a local network and this RPi hostname is in nap-xtz-server's .env file.
+
