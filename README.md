@@ -6,6 +6,7 @@
 - Likely also works with <a href="https://github.com/openframeworks/openFrameworks/releases/download/0.12.1/of_v0.12.1_linuxarmv6l_release.tar.gz">openFrameworks 0.12.1 armv6</a> but has not been extensively tested yet.
 
 ### Setup
+- Set the RPi to X11 mode and reboot. (sudo raspi-config > Advanced Options > Wayland > X11)
 - Clone in `apps/myApps/` directory of your openFrameworks installation.
 - Run `bash setup.sh`.
 - Examine `bin/data/settings.html` for settings.
