@@ -71,8 +71,8 @@ void ofApp::setup() {
     bFboDirty = true;
 
     updateLayout();
-    if (!samples.empty()) loadNap(samples[sampleIndex]);
-    napSource = "file";
+    if (!samples.empty()) loadRandomNap(); //loadNap(samples[sampleIndex]);
+    napSource = "random"; //file";
 
     // The websocket server starts listening the moment it's set up, so
     // everything a frame touches has to be ready first.
