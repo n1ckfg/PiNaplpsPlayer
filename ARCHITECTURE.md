@@ -5,7 +5,7 @@ PiNaplpsPlayer is an openFrameworks application designed to receive and render N
 ## Core Components
 
 ### Application Lifecycle (`ofApp`)
-- **`setup()`**: Initializes window settings, loads local `.nap` sample files, sets up an `ofFbo` for rendering, and starts the WebSocket server listening on port 7112.
+- **`setup()`**: Initializes window settings, loads local `.nap` sample files, sets up an `ofFbo` for rendering, starts the WebSocket server listening on port 7112, and optionally starts a background thread for Tezos chain polling.
 - **`update()`**: Safely pulls any new drawing frames off the incoming network queue (protected by a mutex) and pushes them to the decoder. Updates the `Telidon` renderer state.
 - **`draw()`**: Caches the current state of the drawing by rendering the `Telidon` object to an `ofFbo`. The `ofFbo` is only updated while the drawing is in progress or when marked dirty, reducing GPU load. The cached `ofFbo` is then scaled and drawn to the screen through the image-effect shader (see Configuration), which runs every frame on the way out so the `ofFbo` itself stays a clean copy of the drawing. Also displays an overlay with current status, connection count, and hotkey information.
 
@@ -57,6 +57,7 @@ The `src/` directory includes several utility headers under the `Pinopticon` nam
 1. **Input**:
    - **Local File**: User drags and drops a `.nap` file or uses arrow keys to cycle through samples.
    - **Network**: WebSocket server receives a frame containing NAPLPS data.
+   - **Tezos Chain**: Background thread fetches NAPLPS drawings from the Tezos blockchain.
 2. **Decoding**: `naplps.decode()` or `naplps.load()` processes the byte stream into drawing commands.
 3. **Rendering Prep**: `telidon.setup()` is initialized with the decoded commands.
 4. **Drawing**: During `ofApp::draw()`, if the drawing is still in progress or marked dirty, `telidon.draw()` executes the OpenGL commands to update the cached `ofFbo`. The `ofFbo` is then presented to the window.
