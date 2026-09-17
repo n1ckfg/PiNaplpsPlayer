@@ -1,0 +1,8 @@
+# Place in ~/.config/autostart/pinaplpsplayer.desktop
+[Desktop Entry]
+Type=Application
+Name=PiNaplpsPlayer
+Exec=/home/pi/openFrameworks/of_v0.12.1_linuxaarch64_release/apps/myApps/PiNaplpsPlayer/bin/PiNaplpsPlayer
+Path=/home/pi/openFrameworks/of_v0.12.1_linuxaarch64_release/apps/myApps/PiNaplpsPlayer/bin
+Terminal=false
+X-GNOME-Autostart-enabled=true

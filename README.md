@@ -6,15 +6,13 @@
 - Likely also works with <a href="https://github.com/openframeworks/openFrameworks/releases/download/0.12.1/of_v0.12.1_linuxarmv6l_release.tar.gz">openFrameworks 0.12.1 armv6</a> but has not been extensively tested yet.
 
 ### Setup
-- Set the RPi to X11 mode and reboot. (sudo raspi-config > Advanced Options > Wayland > X11)
 - Clone in `apps/myApps/` directory of your openFrameworks installation.
 - Run `bash setup.sh`.
 - Examine `bin/data/settings.html` for settings.
 - Compile with `make` (or for example `make -j4` with at least 4GB RAM).
 - Launch with `./bin/PiNaplpsPlayer`  
 
-### Operation
-- Reads local NAPLPS images files
-- Will attempt to read on-chain images for the contract set in `bin/data/settings.xml` 
-- Will display images sent by nap-xtz server if they share a local network and this RPi hostname is in nap-xtz-server's .env file.
+### RPi OS Trixie compatibility
+- Disable the screen saver: sudo raspi-config > Display Options > Screen Blanking > Off
+- Set the GUI to X11 mode: sudo raspi-config > Advanced Options > Wayland > X11
 
