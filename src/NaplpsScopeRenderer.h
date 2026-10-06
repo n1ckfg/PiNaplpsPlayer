@@ -42,9 +42,9 @@ class NaplpsScopeRenderer {
 
         // what the audio goes through
         XYEffectChain effects;
-        // audio the effects run over before the loop that's kept, so that
-        // filters and echoes settle: LatkTwoscilloscope's four loops at 5 Hz
-        float settleSeconds = 0.8f;
+        // loops the effects run over before the one that's kept, so that
+        // filters and echoes settle, as XYTransformer::settleCycles
+        int settleCycles = 4;
         // XYscope's blanking levels, and how the strokes view decodes
         XYDecoderSettings decoder;
 

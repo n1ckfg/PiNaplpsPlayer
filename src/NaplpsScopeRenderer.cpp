@@ -62,11 +62,9 @@ ofPath arcPath(const std::vector<glm::vec2> & pts, float w, float h) {
 void NaplpsScopeRenderer::setup(int _sampleRate) {
     sampleRate = _sampleRate;
     parameters.setName("scope");
-    // LatkTwoscilloscope loops at 5 Hz with a 3 px beam, but a NAPLPS drawing
-    // can have thousands of shapes, and at 5 Hz most get only a couple of
-    // samples each.
-    parameters.add(loopFreq.set("loop Hz", 1, 1, 100));
-    parameters.add(beamSize.set("beam size", 2, 0.5, 12));
+    // example-latk's settings
+    parameters.add(loopFreq.set("loop Hz", 5, 1, 100));
+    parameters.add(beamSize.set("beam size", 3, 0.5, 12));
     parameters.add(beamIntensity.set("beam intensity", 1, 0, 4));
 }
 
@@ -291,11 +289,11 @@ void NaplpsScopeRenderer::encode() {
     // with nothing to draw, the beam rests blanked in the middle
     while (i < n) write(glm::vec2(canvas.width, canvas.height) * 0.5f, false);
 
-    // The effects run over enough loops for filters and echoes to settle, and
-    // the last one is kept. LatkTwoscilloscope has XYTransformer do this, but
-    // it also decodes the whole loop back into shapes, which this has no use
-    // for and which took most of the time.
-    const size_t loops = size_t(std::ceil(std::max(0.0f, settleSeconds) * freq)) + 1;
+    // The effects run over a few loops, so that filters and echoes settle,
+    // and the last one is kept, just as XYTransformer::transform() does in
+    // example-latk. XYTransformer itself also decodes the whole loop back into
+    // shapes, which nothing here uses and which took most of the time.
+    const size_t loops = std::max(0, settleCycles) + 1;
     ofSoundBuffer audio;
     audio.allocate(n * loops, 3);
     audio.setSampleRate(sampleRate);

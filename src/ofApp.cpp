@@ -152,6 +152,14 @@ void ofApp::setup() {
     delay->delayX = ofClamp(delayX, delay->delayX.getMin(), delay->delayX.getMax());
     delay->delayY = ofClamp(delayY, delay->delayY.getMin(), delay->delayY.getMax());
 
+    // The scope's own settings, the same way, at example-latk's by default.
+    scope.loopFreq = ofClamp(settings.getValue("settings:loop_hz", 5.0),
+                             scope.loopFreq.getMin(), scope.loopFreq.getMax());
+    scope.beamSize = ofClamp(settings.getValue("settings:beam_size", 3.0),
+                             scope.beamSize.getMin(), scope.beamSize.getMax());
+    scope.beamIntensity = ofClamp(settings.getValue("settings:beam_intensity", 1.0),
+                                  scope.beamIntensity.getMin(), scope.beamIntensity.getMax());
+
     for (auto & effect : effects.effects) {
         if (!effect->enabled) gui.getGroup(effect->getName()).minimize();
     }
