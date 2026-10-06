@@ -161,20 +161,20 @@ void NaplpsScopeRenderer::collect(const Telidon & telidon, const glm::vec2 & off
             for (auto & p : *polygon) labels.push_back(p * scale + offset);
         }
 
-        // The beams add light, so a black shape would draw nothing but still
-        // take up some of the loop.
-        if (color.getBrightness() == 0) continue;
+        // The beams add light, so a black shape would draw nothing. The
+        // darkest gray in the NAPLPS palette keeps it faintly visible instead.
+        const ofColor & shapeColor = color.getBrightness() == 0 ? nap::defaultColorMap()[1] : color;
 
         if (polygon) {
             // makeShape(): the points joined up and closed, like p5's endShape(CLOSE)
             pts.clear();
             for (auto & p : *polygon) pts.push_back(p * scale + offset);
-            addPieces(pts, true, color);
+            addPieces(pts, true, shapeColor);
         } else {
             for (auto & outline : outlines) {
                 pts.clear();
                 for (auto & v : outline.getVertices()) pts.push_back(glm::vec2(v) + offset);
-                addPieces(pts, outline.isClosed(), color);
+                addPieces(pts, outline.isClosed(), shapeColor);
             }
         }
     }

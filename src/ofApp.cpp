@@ -152,9 +152,11 @@ void ofApp::setup() {
     });
 
     // The altered loop plays out of the sound card, X left and Y right, so a
-    // real scope in X-Y mode draws what's on screen.
+    // real scope in X-Y mode draws what's on screen. It's an unpleasant buzz
+    // through ordinary speakers, so it's muted unless settings.xml says otherwise.
     player.setup(0, 0, 44100, 512);
-    if (settings.getValue("settings:audio_out", 1)) openAudio();
+    volume = ofClamp(settings.getValue("settings:volume", 0.0), 0, 1);
+    if (volume > 0) openAudio();
 
     tezosContract = settings.getValue("settings:tezos_contract", "KT1DypSEV87pwiw6swdYqhDKWRBZ7xfqeS3c");
     tzktBase = settings.getValue("settings:tzkt_base", "https://api.shadownet.tzkt.io/v1");
@@ -659,6 +661,9 @@ void ofApp::keyPressed(int key) {
             if (player.isAudioOutOpen()) {
                 player.closeAudioOut();
             } else {
+                // Unmuting a player set to silence means full volume, or
+                // there would still be nothing to hear.
+                if (volume <= 0) volume = 1;
                 openAudio();
             }
             break;
@@ -686,6 +691,8 @@ void ofApp::soloEffect(int index) {
 
 //--------------------------------------------------------------
 void ofApp::openAudio() {
+    // X and Y only: Z is the beam's blanking, not sound.
+    player.amp(volume, volume);
     if (!player.openAudioOut()) {
         ofLogWarning("PiNaplpsPlayer") << "no sound card found, running silently";
     }
@@ -752,7 +759,7 @@ void ofApp::updateInfoText() {
             if (effect->enabled) on += (on.empty() ? "" : ", ") + effect->getName();
         }
         infoText += "effects: " + (on.empty() ? std::string("none") : on) + "\n";
-        infoText += "audio: " + std::string(player.isAudioOutOpen() ? "playing" : "off") + "\n";
+        infoText += "audio: " + (player.isAudioOutOpen() ? "volume " + ofToString(volume, 2) : std::string("muted")) + "\n";
     }
     infoText += "\n";
     infoText += "ws://" + hostName + ":" + ofToString(WS_PORT) + "\n";
@@ -766,7 +773,7 @@ void ofApp::updateInfoText() {
     infoText += "e:      solo next effect\n";
     infoText += "n:      no effects\n";
     infoText += "g:      effects panel\n";
-    infoText += "m:      audio on/off\n";
+    infoText += "m:      mute/unmute audio\n";
     infoText += "i:      hide this\n";
     infoText += "(or drop a .nap file on the window)";
 }

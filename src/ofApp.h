@@ -117,6 +117,8 @@ class ofApp : public ofBaseApp {
         // points Telidon had drawn on when the scope last encoded the drawing
         std::size_t lastRevealed;
 
+        float volume; // 0..1, and 0 leaves the sound card closed
+
         void soloEffect(int index);
         void openAudio();
         void setShowGui(bool show);
