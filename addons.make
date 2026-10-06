@@ -8,3 +8,5 @@ ofxSSLManager
 ofxJSON
 ofxCrypto
 ofxXmlSettings
+ofxGui
+ofxTwoscilloscope

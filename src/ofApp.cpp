@@ -108,6 +108,54 @@ void ofApp::setup() {
         ofLogWarning("PiNaplpsPlayer") << "shader " << shaderName << " didn't load, drawing without it";
     }
 
+    scope.setup(44100);
+    view = BEAMS;
+    soloIndex = -1;
+    lastRevealed = 0;
+
+    // The effect chain from ofxTwoscilloscope's example-transform, in order,
+    // with LatkTwoscilloscope's low pass and Y delay settings. They all start
+    // off, though: LatkTwoscilloscope turns those two on, but where a Latk
+    // drawing has tens of long strokes a NAPLPS drawing has thousands of short
+    // shapes, and anything that smears samples together smears the jumps
+    // between them right across the picture.
+    auto & effects = scope.effects;
+    auto lowPass = effects.add<XYLowPass>();
+    lowPass->cutoff = 1500;
+    auto delay = effects.add<XYChannelDelay>();
+    delay->delayY = 0.6f;
+    effects.add<XYHighPass>();
+    effects.add<XYEcho>();
+    effects.add<XYRingMod>();
+    effects.add<XYRotate>();
+    effects.add<XYDrive>();
+    effects.add<XYWavefold>();
+    effects.add<XYBitCrush>();
+    effects.add<XYSampleHold>();
+    effects.add<XYNoise>();
+    for (auto & effect : effects.effects) effect->enabled = false;
+
+    // Every setting is on the panel. Whatever was saved from it with its disk
+    // icon comes back on the next start, so a player can be tuned once.
+    gui.setup(effects.parameters, "effects.xml");
+    gui.add(scope.parameters);
+    if (ofFile::doesFileExist("effects.xml")) gui.loadFromFile("effects.xml");
+    for (auto & effect : effects.effects) {
+        if (!effect->enabled) gui.getGroup(effect->getName()).minimize();
+    }
+    setShowGui(false);
+
+    // The panel's group holds the effects and the scope settings added to it,
+    // so any change on the panel makes a new loop.
+    paramsListener = gui.getParameter().castGroup().parameterChangedE().newListener([this](ofAbstractParameter &) {
+        bFboDirty = true;
+    });
+
+    // The altered loop plays out of the sound card, X left and Y right, so a
+    // real scope in X-Y mode draws what's on screen.
+    player.setup(0, 0, 44100, 512);
+    if (settings.getValue("settings:audio_out", 1)) openAudio();
+
     tezosContract = settings.getValue("settings:tezos_contract", "KT1DypSEV87pwiw6swdYqhDKWRBZ7xfqeS3c");
     tzktBase = settings.getValue("settings:tzkt_base", "https://api.shadownet.tzkt.io/v1");
     tezosPollSeconds = settings.getValue("settings:tezos_poll_seconds", 30);
@@ -221,9 +269,31 @@ void ofApp::update() {
 
     telidon.update();
 
+    // The drawing only changes when Telidon draws on another point, or when
+    // a new drawing, a redraw or a setting marks it dirty. Only then does the
+    // scope need a new loop, and the fbo a new picture.
+    std::size_t revealed = 0;
+    for (auto & drawCmd : telidon.drawCmds) revealed += drawCmd.points.size();
+
+    if (bFboDirty || revealed != lastRevealed) {
+        lastRevealed = revealed;
+        bFboDirty = true;
+
+        // the whole round trip: shapes -> audio -> effects -> shapes
+        scope.update(telidon, drawOffset, fboWidth, fboHeight);
+
+        // loop the altered audio, Z (blanking) included
+        std::vector<float> x, y, z;
+        scope.getLoop(x, y, z);
+        player.freq(scope.getFreq());
+        player.setWaveforms(x, y, z);
+
+        if (showInfo) updateInfoText();
+    }
+
     if (showInfo) {
         static std::string lastState = "";
-        std::string currentState = ofToString(connections) + "_" + ofToString(received) + "_" + (telidon.isFinished() ? "1" : "0") + "_" + napSource + "_" + naplps.fileName + "_" + ofToString(progressiveDraw) + "_" + ofToString(labelPoints) + "_" + ofToString(slideshowActive);
+        std::string currentState = ofToString(connections) + "_" + ofToString(received) + "_" + (telidon.isFinished() ? "1" : "0") + "_" + napSource + "_" + naplps.fileName + "_" + ofToString(progressiveDraw) + "_" + ofToString(labelPoints) + "_" + ofToString(slideshowActive) + "_" + ofToString(player.isAudioOutOpen());
         if (currentState != lastState) {
             updateInfoText();
             lastState = currentState;
@@ -233,19 +303,30 @@ void ofApp::update() {
 
 //--------------------------------------------------------------
 void ofApp::draw() {
-    if (!telidon.isFinished() || bFboDirty) {
+    // update() has already encoded whatever made the fbo dirty.
+    if (bFboDirty) {
         fbo.begin();
         ofBackground(0);
 
-        ofPushMatrix();
-        ofTranslate(drawOffset.x, drawOffset.y);
-        telidon.draw();
-        ofPopMatrix();
-        fbo.end();
-
-        if (telidon.isFinished()) {
-            bFboDirty = false;
+        switch (view) {
+            case BEAMS:
+                scope.drawBeams();
+                break;
+            case STROKES:
+                scope.drawStrokes();
+                break;
+            case ORIGINAL:
+                // Telidon's own filled shapes, labels and all, for comparison
+                ofPushMatrix();
+                ofTranslate(drawOffset.x, drawOffset.y);
+                telidon.draw();
+                ofPopMatrix();
+                break;
         }
+        if (labelPoints && view != ORIGINAL) scope.drawLabels();
+
+        fbo.end();
+        bFboDirty = false;
     }
 	
     // The effect goes on as the cached drawing is copied to the screen, not
@@ -254,6 +335,8 @@ void ofApp::draw() {
     if (shader.isLoaded()) shader.begin();
 	fbo.draw(0, 0, ofGetWidth(), ofGetHeight()); //720, 480);
     if (shader.isLoaded()) shader.end();
+
+    if (showGui) gui.draw();
 
     if (showInfo) {
         ofDrawBitmapStringHighlight(infoText, 10, 20);
@@ -426,6 +509,8 @@ void ofApp::tezosThreadFunc() {
 
 //--------------------------------------------------------------
 void ofApp::exit() {
+    player.closeAudioOut();
+
     tezosRunning = false;
     if (tezosThread.joinable()) tezosThread.join();
 }
@@ -557,8 +642,67 @@ void ofApp::keyPressed(int key) {
         case 'f':
             ofToggleFullscreen();
             break;
+        case 'v':
+            view = View((view + 1) % 3);
+            bFboDirty = true;
+            break;
+        case 'e':
+            soloEffect((soloIndex + 1) % (int)scope.effects.effects.size());
+            break;
+        case 'n':
+            soloEffect(-1);
+            break;
+        case 'g':
+            setShowGui(!showGui);
+            break;
+        case 'm':
+            if (player.isAudioOutOpen()) {
+                player.closeAudioOut();
+            } else {
+                openAudio();
+            }
+            break;
         default:
             break;
+    }
+}
+
+//--------------------------------------------------------------
+// Turns on one effect at a time, to see what each one does. -1 turns them
+// all off, leaving the round trip on its own.
+void ofApp::soloEffect(int index) {
+    soloIndex = index;
+    auto & effects = scope.effects.effects;
+    for (std::size_t i = 0; i < effects.size(); i++) {
+        auto & effect = effects[i];
+        effect->enabled = (int)i == index;
+        if (effect->enabled) {
+            gui.getGroup(effect->getName()).maximize();
+        } else {
+            gui.getGroup(effect->getName()).minimize();
+        }
+    }
+}
+
+//--------------------------------------------------------------
+void ofApp::openAudio() {
+    if (!player.openAudioOut()) {
+        ofLogWarning("PiNaplpsPlayer") << "no sound card found, running silently";
+    }
+}
+
+//--------------------------------------------------------------
+// The panel needs the mouse, which a player normally hides. While it's
+// hidden it ignores the mouse too, so a stray click can't change a setting.
+void ofApp::setShowGui(bool show) {
+    showGui = show;
+    if (showGui) {
+        gui.setPosition(ofGetWidth() - gui.getWidth() - 10, 10);
+        gui.registerMouseEvents();
+        ofShowCursor();
+    } else {
+        gui.unregisterMouseEvents();
+        ofHideCursor();
     }
 }
 
@@ -566,6 +710,7 @@ void ofApp::keyPressed(int key) {
 void ofApp::windowResized(int w, int h) {
     updateLayout();
     telidon.setSize(drawSize, drawSize);
+    gui.setPosition(w - gui.getWidth() - 10, 10);
 }
 
 //--------------------------------------------------------------
@@ -594,6 +739,22 @@ void ofApp::updateInfoText() {
         infoText += "\n";
     }
     infoText += "\n";
+    {
+        static const char * viewNames[] = { "beams", "decoded strokes", "original" };
+        const auto & stats = scope.getStats();
+        infoText += "scope: " + std::string(viewNames[view]) + ", loop " + ofToString(scope.getFreq(), 1) + " Hz, "
+            + ofToString(stats.pieces) + " strokes";
+        if (stats.dropped > 0) infoText += " (" + ofToString(stats.dropped) + " too short to fit)";
+        infoText += ", " + ofToString(stats.ms, 1) + " ms\n";
+
+        std::string on;
+        for (auto & effect : scope.effects.effects) {
+            if (effect->enabled) on += (on.empty() ? "" : ", ") + effect->getName();
+        }
+        infoText += "effects: " + (on.empty() ? std::string("none") : on) + "\n";
+        infoText += "audio: " + std::string(player.isAudioOutOpen() ? "playing" : "off") + "\n";
+    }
+    infoText += "\n";
     infoText += "ws://" + hostName + ":" + ofToString(WS_PORT) + "\n";
     infoText += ofToString(connections) + " connected, " + ofToString(received) + " received\n";
     infoText += "\n";
@@ -601,6 +762,11 @@ void ofApp::updateInfoText() {
     infoText += "space:  redraw\n";
     infoText += "p:      progressive draw " + std::string(progressiveDraw ? "on" : "off") + "\n";
     infoText += "l:      label points " + std::string(labelPoints ? "on" : "off") + "\n";
+    infoText += "v:      view beams/strokes/original\n";
+    infoText += "e:      solo next effect\n";
+    infoText += "n:      no effects\n";
+    infoText += "g:      effects panel\n";
+    infoText += "m:      audio on/off\n";
     infoText += "i:      hide this\n";
     infoText += "(or drop a .nap file on the window)";
 }

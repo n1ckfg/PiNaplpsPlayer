@@ -13,6 +13,10 @@
          shader pair in bin/data/shaders, without the _gl3/_es3 suffix. A name
          that doesn't load leaves the drawing unprocessed. -->
     <shader_name>vhsc</shader_name>
+    <!-- Play the drawing out of the default sound card as XY oscilloscope
+         audio (X left, Y right), to drive a real scope in X-Y mode. The effect
+         and beam settings live in effects.xml, saved from the panel (g). -->
+    <audio_out>1</audio_out>
     <debug_view>0</debug_view>
     <!-- Tezos chain read: poll TzKT for NAPLPS drawings stored on-chain.
          During slideshow mode, the player alternates between local files

@@ -12,6 +12,9 @@
 #include "ofxJSONElement.h"
 #include "ofxCrypto.h"
 #include "ofxXmlSettings.h"
+#include "ofxGui.h"
+
+#include "NaplpsScopeRenderer.h"
 
 
 
@@ -46,7 +49,7 @@ class ofApp : public ofBaseApp {
         void updateLayout();
 
         Naplps naplps;   // the decoder,  ported from naplps.js
-        Telidon telidon; // the renderer, ported from TelidonP5.js
+        Telidon telidon; // the progressive drawing, ported from TelidonP5.js
 	
 		ofFbo fbo;
 	
@@ -91,6 +94,32 @@ class ofApp : public ofBaseApp {
         bool bFboDirty;
         std::string infoText;
         void updateInfoText();
+
+        // ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
+        // OSCILLOSCOPE
+        //
+        // The drawing goes to the screen the way LatkTwoscilloscope draws: as
+        // XY oscilloscope audio, through an effect chain, and back as the
+        // light of a simulated beam. Telidon still decides how much of the
+        // drawing is on screen, so it draws on at the same pace as before.
+        // ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
+
+        NaplpsScopeRenderer scope;
+        XYscope player; // loops the altered audio out of the sound card
+        ofxPanel gui;
+        ofEventListener paramsListener;
+
+        enum View { BEAMS, STROKES, ORIGINAL };
+        View view;
+        int soloIndex;
+        bool showGui;
+
+        // points Telidon had drawn on when the scope last encoded the drawing
+        std::size_t lastRevealed;
+
+        void soloEffect(int index);
+        void openAudio();
+        void setShowGui(bool show);
 
         // ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
         // NETWORK
