@@ -91,10 +91,6 @@ void ofApp::setup() {
     Pinopticon::setupWsServer(this, wsServer, WS_PORT, MAX_NAP_BYTES);
 	
     fbo.allocate(fboWidth, fboHeight, GL_RGB);
-    // The live view only ever fades what's in it, so start it black.
-    fbo.begin();
-    ofClear(0);
-    fbo.end();
 
     shaderName = settings.getValue("settings:shader_name", "vhsc"); 
 
@@ -113,7 +109,7 @@ void ofApp::setup() {
     }
 
     scope.setup(44100);
-    view = LIVE;
+    view = BEAMS;
     soloIndex = -1;
     lastRevealed = 0;
 
@@ -125,7 +121,7 @@ void ofApp::setup() {
     auto delay = effects.add<XYChannelDelay>();
     effects.add<XYHighPass>();
     effects.add<XYEcho>();
-    effects.add<XYRingMod>();
+    auto ringMod = effects.add<XYRingMod>();
     effects.add<XYRotate>();
     effects.add<XYDrive>();
     effects.add<XYWavefold>();
@@ -156,6 +152,16 @@ void ofApp::setup() {
     delay->delayX = ofClamp(delayX, delay->delayX.getMin(), delay->delayX.getMax());
     delay->delayY = ofClamp(delayY, delay->delayY.getMin(), delay->delayY.getMax());
 
+    // The ring mod keeps the drawing moving once it's drawn. The effects play
+    // the loop continuously, so at a frequency that isn't a whole multiple of
+    // the loop's, each shape lands on a slightly different part of the
+    // modulation every time round, and drifts.
+    const float ringDepth = settings.getValue("settings:ring_mod_depth", 0.1);
+    ringMod->enabled = ringDepth > 0;
+    ringMod->depth = ofClamp(ringDepth, ringMod->depth.getMin(), ringMod->depth.getMax());
+    ringMod->freq = ofClamp(settings.getValue("settings:ring_mod_freq", 150.5),
+                            ringMod->freq.getMin(), ringMod->freq.getMax());
+
     // The scope's own settings, the same way, at example-latk's by default.
     scope.loopFreq = ofClamp(settings.getValue("settings:loop_hz", 5.0),
                              scope.loopFreq.getMin(), scope.loopFreq.getMax());
@@ -163,8 +169,6 @@ void ofApp::setup() {
                              scope.beamSize.getMin(), scope.beamSize.getMax());
     scope.beamIntensity = ofClamp(settings.getValue("settings:beam_intensity", 1.0),
                                   scope.beamIntensity.getMin(), scope.beamIntensity.getMax());
-    scope.afterglow = ofClamp(settings.getValue("settings:afterglow", 0.1),
-                              scope.afterglow.getMin(), scope.afterglow.getMax());
 
     for (auto & effect : effects.effects) {
         if (!effect->enabled) gui.getGroup(effect->getName()).minimize();
@@ -299,24 +303,29 @@ void ofApp::update() {
 
     // The drawing only changes when Telidon draws on another point, or when
     // a new drawing, a redraw or a setting marks it dirty. Only then does the
-    // scope need a new loop, and the fbo a new picture.
+    // scope need a new loop.
     std::size_t revealed = 0;
     for (auto & drawCmd : telidon.drawCmds) revealed += drawCmd.points.size();
 
     if (bFboDirty || revealed != lastRevealed) {
         lastRevealed = revealed;
         bFboDirty = true;
-
-        // the whole round trip: shapes -> audio -> effects -> shapes
         scope.update(telidon, drawOffset, fboWidth, fboHeight);
+        if (showInfo) updateInfoText();
+    }
+
+    // The loop plays through the effects in real time, so whatever in them
+    // changes over time (ring mod, rotate's spin, noise) keeps the picture
+    // moving after the drawing is done. When the altered loop changes, the fbo
+    // and the audio follow it.
+    if (scope.advance(ofGetLastFrameTime())) {
+        bFboDirty = true;
 
         // loop the altered audio, Z (blanking) included
         std::vector<float> x, y, z;
         scope.getLoop(x, y, z);
         player.freq(scope.getFreq());
         player.setWaveforms(x, y, z);
-
-        if (showInfo) updateInfoText();
     }
 
     if (showInfo) {
@@ -331,21 +340,12 @@ void ofApp::update() {
 
 //--------------------------------------------------------------
 void ofApp::draw() {
-    if (view == LIVE) {
-        // The fbo is the scope's phosphor: the beam draws into it as it sweeps,
-        // every frame, and what it drew fades rather than being cleared.
-        fbo.begin();
-        scope.drawLive(ofGetLastFrameTime());
-        fbo.end();
-        bFboDirty = false;
-    } else if (bFboDirty) {
-        // update() has already encoded whatever made the fbo dirty.
+    // update() has already encoded whatever made the fbo dirty.
+    if (bFboDirty) {
         fbo.begin();
         ofBackground(0);
 
         switch (view) {
-            case LIVE:
-                break;
             case BEAMS:
                 scope.drawBeams();
                 break;
@@ -360,6 +360,7 @@ void ofApp::draw() {
                 ofPopMatrix();
                 break;
         }
+        if (labelPoints && view != ORIGINAL) scope.drawLabels();
 
         fbo.end();
         bFboDirty = false;
@@ -371,15 +372,6 @@ void ofApp::draw() {
     if (shader.isLoaded()) shader.begin();
 	fbo.draw(0, 0, ofGetWidth(), ofGetHeight()); //720, 480);
     if (shader.isLoaded()) shader.end();
-
-    // Telidon draws its own labels in the original view. The others get them
-    // on top, where the live view's afterglow can't pile them up.
-    if (labelPoints && view != ORIGINAL) {
-        ofPushMatrix();
-        ofScale(ofGetWidth() / float(fboWidth), ofGetHeight() / float(fboHeight));
-        scope.drawLabels();
-        ofPopMatrix();
-    }
 
     if (showGui) gui.draw();
 
@@ -688,7 +680,7 @@ void ofApp::keyPressed(int key) {
             ofToggleFullscreen();
             break;
         case 'v':
-            view = View((view + 1) % 4);
+            view = View((view + 1) % 3);
             bFboDirty = true;
             break;
         case 'e':
@@ -788,7 +780,7 @@ void ofApp::updateInfoText() {
     }
     infoText += "\n";
     {
-        static const char * viewNames[] = { "live beam", "whole loop", "decoded strokes", "original" };
+        static const char * viewNames[] = { "beams", "decoded strokes", "original" };
         const auto & stats = scope.getStats();
         infoText += "scope: " + std::string(viewNames[view]) + ", loop " + ofToString(scope.getFreq(), 1) + " Hz, "
             + ofToString(stats.pieces) + " strokes";
@@ -810,7 +802,7 @@ void ofApp::updateInfoText() {
     infoText += "space:  redraw\n";
     infoText += "p:      progressive draw " + std::string(progressiveDraw ? "on" : "off") + "\n";
     infoText += "l:      label points " + std::string(labelPoints ? "on" : "off") + "\n";
-    infoText += "v:      view live/loop/strokes/original\n";
+    infoText += "v:      view beams/strokes/original\n";
     infoText += "e:      solo next effect\n";
     infoText += "n:      no effects\n";
     infoText += "g:      effects panel\n";

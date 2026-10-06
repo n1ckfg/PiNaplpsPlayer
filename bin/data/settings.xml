@@ -29,6 +29,13 @@
          keep them readable. -->
     <channel_delay_x>0</channel_delay_x>
     <channel_delay_y>0.6</channel_delay_y>
+    <!-- Ring mod, which keeps the drawing moving once it's drawn by pulling
+         its shapes in towards the center and letting them go again: depth
+         (0 to 1, 0 turns it off) is how far, and freq (0.1 to 2000 Hz) how
+         often. A freq that's a whole multiple of loop_hz holds still; anything
+         else drifts, and the further from one, the faster. -->
+    <ring_mod_freq>150.5</ring_mod_freq>
+    <ring_mod_depth>0.1</ring_mod_depth>
     <!-- The oscilloscope itself. loop_hz (1 to 100) is how many times a
          second the beam draws the whole picture: lower gives every shape more
          samples, and 1 keeps even dense drawings readable, while higher
@@ -39,11 +46,6 @@
     <loop_hz>5</loop_hz>
     <beam_size>3</beam_size>
     <beam_intensity>1</beam_intensity>
-    <!-- The beam sweeps through the loop in real time, as on a real scope,
-         and leaves a trace that fades: afterglow is the seconds it takes to
-         fade to half (0.01 to 2). Shorter flickers more; longer holds more of
-         the drawing on screen between sweeps. -->
-    <afterglow>0.1</afterglow>
     <debug_view>0</debug_view>
     <!-- Tezos chain read: poll TzKT for NAPLPS drawings stored on-chain.
          During slideshow mode, the player alternates between local files

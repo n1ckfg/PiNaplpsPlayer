@@ -24,17 +24,19 @@ class NaplpsScopeRenderer {
 
         void setup(int sampleRate = 44100);
 
-        // Encodes and transforms whatever telidon has drawn so far. Its unit
-        // screen is scaled to telidon's size and moved by offset, the way
-        // ofApp::draw() places it, onto a width x height canvas.
+        // Encodes whatever telidon has drawn so far. Its unit screen is
+        // scaled to telidon's size and moved by offset, the way ofApp::draw()
+        // places it, onto a width x height canvas. The new loop takes over
+        // from the old as advance() plays it.
         void update(const Telidon & telidon, const glm::vec2 & offset, float width, float height);
 
-        // The beam sweeping through the altered audio in real time, as a scope
-        // shows it. Fades what's already there by the afterglow, then draws
-        // the stretch of the loop the beam has covered in the last `seconds`,
-        // so draw it into a buffer that's kept from one frame to the next.
-        void drawLive(float seconds);
-        // The whole loop of the altered audio drawn by the beam at once.
+        // Plays the next `seconds` of the loop through the effects, carrying
+        // on from where the last call left them, the way an effects unit
+        // would hear it. Returns whether the altered loop changed: with
+        // nothing that varies over time switched on, it settles and stops.
+        bool advance(float seconds);
+
+        // The altered audio drawn by the oscilloscope beam.
         void drawBeams();
         // The altered audio decoded back into strokes.
         void drawStrokes();
@@ -47,7 +49,7 @@ class NaplpsScopeRenderer {
 
         // what the audio goes through
         XYEffectChain effects;
-        // loops the effects run over before the one that's kept, so that
+        // loops the effects run over when they start from scratch, so that
         // filters and echoes settle, as XYTransformer::settleCycles
         int settleCycles = 4;
         // XYscope's blanking levels, and how the strokes view decodes
@@ -57,14 +59,13 @@ class NaplpsScopeRenderer {
         ofParameter<float> loopFreq;      // Hz: lower gives the drawing more samples
         ofParameter<float> beamSize;      // beam radius, px
         ofParameter<float> beamIntensity; // brightness of a stroke drawn at an even speed
-        ofParameter<float> afterglow;     // seconds for the live beam's trace to fade to half
 
         struct Stats {
             size_t pieces = 0;
             size_t dropped = 0;     // pieces left out because the loop is too short
             size_t samples = 0;     // per loop
             float pathLength = 0;   // px
-            float ms = 0;           // collecting, encoding and running the effects
+            float ms = 0;           // collecting and encoding
         };
         const Stats & getStats() const { return stats; }
 
@@ -82,12 +83,9 @@ class NaplpsScopeRenderer {
         // cuts a shape (canvas px) into the pieces that fit on the canvas
         void addPieces(std::vector<glm::vec2> & pts, bool closed, const ofColor & color);
         void encode();
-        void groupBeams();
+        // starts the effects from scratch on the current loop
+        void prime();
         void buildBeams();
-        // light per sample, so a stroke peaks at about beamIntensity
-        float exposure() const;
-        // the transform from scope units to the canvas
-        void pushScopeMatrix() const;
         void decodeStrokes();
 
         int sampleRate = 44100;
@@ -97,24 +95,33 @@ class NaplpsScopeRenderer {
 
         std::vector<Piece> pieces;
         std::vector<glm::vec2> labels; // canvas px
-        std::vector<float> x, y, z;    // one loop of the altered audio
+        // One loop of the audio as encoded, X, Y and Z interleaved, and the
+        // piece each sample belongs to: its tag (0 between pieces) and colour.
+        std::vector<float> dry;
+        std::vector<uint32_t> dryTags;
+        std::vector<ofColor> dryColors;
+        uint32_t nextTag = 1;
 
-        // One beam per colour: the beams add up, so the drawing order doesn't matter.
+        // The same loop as it comes out of the effects, each sample written
+        // over as the effects reach it, so until then a sample still belongs
+        // to the piece it was encoded from.
+        std::vector<float> x, y, z;
+        std::vector<uint32_t> tags;
+        std::vector<ofColor> colors;
+        size_t playhead = 0;  // the next sample the effects will reach
+        double pending = 0;   // samples due, short of a whole one
+
         struct Beam {
             ofFloatColor color;
-            std::vector<size_t> pieces;
-            ofMesh mesh; // the whole loop, for drawBeams()
+            ofMesh mesh;
         };
         OsciMesh osci;
         std::vector<Beam> beams;
-        std::vector<float> sx;       // x in scope units, which keep the beam round
-        std::vector<float> bright;   // 0 for the jump OsciMesh makes to each run, then 1
-        float stepAverage = 0;       // the beam's average step, in scope units
+        float beamExposure = 1;
         bool beamsDirty = true;
-        double playhead = 0;         // where the live beam has got to in the loop, in samples
 
         std::vector<ofPolyline> strokes;
-        std::vector<size_t> strokePieces; // the piece each stroke was decoded from
+        std::vector<ofColor> strokeColors;
         bool strokesDirty = true;
 
         Stats stats;
