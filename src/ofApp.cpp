@@ -91,6 +91,10 @@ void ofApp::setup() {
     Pinopticon::setupWsServer(this, wsServer, WS_PORT, MAX_NAP_BYTES);
 	
     fbo.allocate(fboWidth, fboHeight, GL_RGB);
+    // The live view only ever fades what's in it, so start it black.
+    fbo.begin();
+    ofClear(0);
+    fbo.end();
 
     shaderName = settings.getValue("settings:shader_name", "vhsc"); 
 
@@ -109,7 +113,7 @@ void ofApp::setup() {
     }
 
     scope.setup(44100);
-    view = BEAMS;
+    view = LIVE;
     soloIndex = -1;
     lastRevealed = 0;
 
@@ -159,6 +163,8 @@ void ofApp::setup() {
                              scope.beamSize.getMin(), scope.beamSize.getMax());
     scope.beamIntensity = ofClamp(settings.getValue("settings:beam_intensity", 1.0),
                                   scope.beamIntensity.getMin(), scope.beamIntensity.getMax());
+    scope.afterglow = ofClamp(settings.getValue("settings:afterglow", 0.1),
+                              scope.afterglow.getMin(), scope.afterglow.getMax());
 
     for (auto & effect : effects.effects) {
         if (!effect->enabled) gui.getGroup(effect->getName()).minimize();
@@ -325,12 +331,21 @@ void ofApp::update() {
 
 //--------------------------------------------------------------
 void ofApp::draw() {
-    // update() has already encoded whatever made the fbo dirty.
-    if (bFboDirty) {
+    if (view == LIVE) {
+        // The fbo is the scope's phosphor: the beam draws into it as it sweeps,
+        // every frame, and what it drew fades rather than being cleared.
+        fbo.begin();
+        scope.drawLive(ofGetLastFrameTime());
+        fbo.end();
+        bFboDirty = false;
+    } else if (bFboDirty) {
+        // update() has already encoded whatever made the fbo dirty.
         fbo.begin();
         ofBackground(0);
 
         switch (view) {
+            case LIVE:
+                break;
             case BEAMS:
                 scope.drawBeams();
                 break;
@@ -345,7 +360,6 @@ void ofApp::draw() {
                 ofPopMatrix();
                 break;
         }
-        if (labelPoints && view != ORIGINAL) scope.drawLabels();
 
         fbo.end();
         bFboDirty = false;
@@ -357,6 +371,15 @@ void ofApp::draw() {
     if (shader.isLoaded()) shader.begin();
 	fbo.draw(0, 0, ofGetWidth(), ofGetHeight()); //720, 480);
     if (shader.isLoaded()) shader.end();
+
+    // Telidon draws its own labels in the original view. The others get them
+    // on top, where the live view's afterglow can't pile them up.
+    if (labelPoints && view != ORIGINAL) {
+        ofPushMatrix();
+        ofScale(ofGetWidth() / float(fboWidth), ofGetHeight() / float(fboHeight));
+        scope.drawLabels();
+        ofPopMatrix();
+    }
 
     if (showGui) gui.draw();
 
@@ -665,7 +688,7 @@ void ofApp::keyPressed(int key) {
             ofToggleFullscreen();
             break;
         case 'v':
-            view = View((view + 1) % 3);
+            view = View((view + 1) % 4);
             bFboDirty = true;
             break;
         case 'e':
@@ -765,7 +788,7 @@ void ofApp::updateInfoText() {
     }
     infoText += "\n";
     {
-        static const char * viewNames[] = { "beams", "decoded strokes", "original" };
+        static const char * viewNames[] = { "live beam", "whole loop", "decoded strokes", "original" };
         const auto & stats = scope.getStats();
         infoText += "scope: " + std::string(viewNames[view]) + ", loop " + ofToString(scope.getFreq(), 1) + " Hz, "
             + ofToString(stats.pieces) + " strokes";
@@ -787,7 +810,7 @@ void ofApp::updateInfoText() {
     infoText += "space:  redraw\n";
     infoText += "p:      progressive draw " + std::string(progressiveDraw ? "on" : "off") + "\n";
     infoText += "l:      label points " + std::string(labelPoints ? "on" : "off") + "\n";
-    infoText += "v:      view beams/strokes/original\n";
+    infoText += "v:      view live/loop/strokes/original\n";
     infoText += "e:      solo next effect\n";
     infoText += "n:      no effects\n";
     infoText += "g:      effects panel\n";

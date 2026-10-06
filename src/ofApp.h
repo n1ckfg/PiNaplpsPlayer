@@ -109,7 +109,7 @@ class ofApp : public ofBaseApp {
         ofxPanel gui;
         ofEventListener paramsListener;
 
-        enum View { BEAMS, STROKES, ORIGINAL };
+        enum View { LIVE, BEAMS, STROKES, ORIGINAL };
         View view;
         int soloIndex;
         bool showGui;

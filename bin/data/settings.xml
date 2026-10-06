@@ -39,6 +39,11 @@
     <loop_hz>5</loop_hz>
     <beam_size>3</beam_size>
     <beam_intensity>1</beam_intensity>
+    <!-- The beam sweeps through the loop in real time, as on a real scope,
+         and leaves a trace that fades: afterglow is the seconds it takes to
+         fade to half (0.01 to 2). Shorter flickers more; longer holds more of
+         the drawing on screen between sweeps. -->
+    <afterglow>0.1</afterglow>
     <debug_view>0</debug_view>
     <!-- Tezos chain read: poll TzKT for NAPLPS drawings stored on-chain.
          During slideshow mode, the player alternates between local files

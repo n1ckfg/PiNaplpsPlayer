@@ -66,6 +66,7 @@ void NaplpsScopeRenderer::setup(int _sampleRate) {
     parameters.add(loopFreq.set("loop Hz", 5, 1, 100));
     parameters.add(beamSize.set("beam size", 3, 0.5, 12));
     parameters.add(beamIntensity.set("beam intensity", 1, 0, 4));
+    parameters.add(afterglow.set("afterglow", 0.1, 0.01, 2));
 }
 
 //--------------------------------------------------------------
@@ -83,6 +84,7 @@ void NaplpsScopeRenderer::update(const Telidon & telidon, const glm::vec2 & offs
 
     collect(telidon, offset);
     encode();
+    groupBeams();
     stats.ms = (ofGetElapsedTimeMicros() - startMicros) / 1000.0f;
 }
 
@@ -322,72 +324,140 @@ void NaplpsScopeRenderer::getLoop(std::vector<float> & _x, std::vector<float> & 
 }
 
 //--------------------------------------------------------------
-void NaplpsScopeRenderer::buildBeams() {
-    beamsDirty = false;
+void NaplpsScopeRenderer::groupBeams() {
+    beamsDirty = true;
     beams.clear();
+    sx.clear();
+    stepAverage = 0;
     if (x.size() != cycleFrames) return;
 
     // Scope units: -1..1 up the canvas, and as far across it as its shape
     // allows, so the beam stays round on any canvas.
     const float aspect = canvas.width / canvas.height;
-    std::vector<float> sx(x.size());
+    sx.resize(x.size());
     for (size_t i = 0; i < x.size(); i++) sx[i] = x[i] * aspect;
-    osci.uSize = beamSize / (canvas.height / 2);
 
     // OsciMesh joins each run of samples to the end of the last one, lit as
     // the run's first sample. Keep that jump dark.
-    std::vector<float> bright(x.size(), 1);
+    bright.assign(x.size(), 1);
     bright[0] = 0;
 
-    // One mesh per colour: the beams add up, so the drawing order doesn't matter.
     std::map<int, size_t> beamOfColor;
-    std::vector<std::vector<const Piece *>> members;
-    for (const auto & piece : pieces) {
+    double stepSum = 0;
+    size_t steps = 0;
+    for (size_t k = 0; k < pieces.size(); k++) {
+        const Piece & piece = pieces[k];
         auto found = beamOfColor.find(piece.color.getHex());
         if (found == beamOfColor.end()) {
             found = beamOfColor.emplace(piece.color.getHex(), beams.size()).first;
-            beams.push_back({ piece.color, ofMesh() });
-            members.emplace_back();
+            beams.push_back({ piece.color, {}, ofMesh() });
         }
-        members[found->second].push_back(&piece);
-    }
+        beams[found->second].pieces.push_back(k);
 
-    double stepSum = 0;
-    size_t steps = 0;
-    for (size_t b = 0; b < beams.size(); b++) {
-        osci.clear();
-        for (const Piece * piece : members[b]) {
-            const size_t first = piece->start + 1;
-            osci.addLines(&sx[first], &y[first], bright.data(), int(piece->lit));
-            for (size_t i = first + 1; i < first + piece->lit; i++) {
-                stepSum += glm::distance(glm::vec2(sx[i - 1], y[i - 1]), glm::vec2(sx[i], y[i]));
-                steps++;
-            }
+        for (size_t i = piece.start + 2; i <= piece.start + piece.lit; i++) {
+            stepSum += glm::distance(glm::vec2(sx[i - 1], y[i - 1]), glm::vec2(sx[i], y[i]));
+            steps++;
         }
-        std::swap(beams[b].mesh, osci.mesh);
     }
+    stepAverage = steps > 0 ? float(stepSum / steps) : 0;
+}
 
+//--------------------------------------------------------------
+float NaplpsScopeRenderer::exposure() const {
     // A beam leaves less light on a line the faster it moves, so a longer
     // drawing or a shorter loop comes out dimmer. Scale the light by the
     // average step, so a stroke peaks at about beamIntensity either way.
     const float sigma = osci.uSize / 3;
-    beamExposure = steps > 0 ? float(stepSum / steps) / (sigma * std::sqrt(TWO_PI)) : 1;
+    return stepAverage > 0 ? stepAverage / (sigma * std::sqrt(TWO_PI)) : 1;
 }
 
 //--------------------------------------------------------------
-void NaplpsScopeRenderer::drawBeams() {
-    if (beamsDirty) buildBeams();
-
+void NaplpsScopeRenderer::pushScopeMatrix() const {
     ofPushMatrix();
     ofTranslate(canvas.getCenter());
     // scope +Y is up
     ofScale(canvas.height / 2, -canvas.height / 2);
-    osci.uIntensity = beamIntensity * beamExposure;
+}
+
+//--------------------------------------------------------------
+void NaplpsScopeRenderer::buildBeams() {
+    beamsDirty = false;
+    for (auto & beam : beams) {
+        osci.clear();
+        for (size_t k : beam.pieces) {
+            const size_t first = pieces[k].start + 1;
+            osci.addLines(&sx[first], &y[first], bright.data(), int(pieces[k].lit));
+        }
+        std::swap(beam.mesh, osci.mesh);
+    }
+}
+
+//--------------------------------------------------------------
+void NaplpsScopeRenderer::drawBeams() {
+    // OsciMesh sizes its quads as it builds them
+    osci.uSize = beamSize / (canvas.height / 2);
+    if (beamsDirty) buildBeams();
+
+    pushScopeMatrix();
+    osci.uIntensity = beamIntensity * exposure();
     for (auto & beam : beams) {
         std::swap(osci.mesh, beam.mesh);
         osci.uRgb = glm::vec3(beam.color.r, beam.color.g, beam.color.b);
         osci.draw();
         std::swap(osci.mesh, beam.mesh);
+    }
+    ofPopMatrix();
+}
+
+//--------------------------------------------------------------
+void NaplpsScopeRenderer::drawLive(float seconds) {
+    // The afterglow: fade what the beam left, as Oscilloscope::draw() does,
+    // and take one level more off, or an 8-bit buffer never quite gets back
+    // to black.
+    const float keep = std::pow(0.5f, seconds / std::max(0.001f, afterglow.get()));
+    ofPushStyle();
+    ofFill();
+    ofEnableBlendMode(OF_BLENDMODE_MULTIPLY);
+    ofSetColor(0, (1 - keep) * 255);
+    ofDrawRectangle(canvas);
+    ofEnableBlendMode(OF_BLENDMODE_SUBTRACT);
+    ofSetColor(1);
+    ofDrawRectangle(canvas);
+    ofPopStyle();
+
+    const size_t n = cycleFrames;
+    if (sx.size() != n) return;
+
+    // The samples the beam has reached since the last frame, at the speed the
+    // loop plays: the ones after the old playhead, up to and including the
+    // new one, and never more than the whole loop.
+    playhead = std::fmod(playhead, double(n));
+    const double to = playhead + std::min(double(seconds) * sampleRate, double(n));
+    const size_t from = size_t(playhead) + 1;
+    const size_t until = size_t(to) + 1;
+    playhead = std::fmod(to, double(n));
+    if (until <= from) return;
+    // the same stretch of the loop, as one or two runs that don't wrap around
+    const size_t runs[2][2] = { { from, std::min(until, n) }, { 0, until > n ? until - n : 0 } };
+
+    osci.uSize = beamSize / (canvas.height / 2);
+    osci.uIntensity = beamIntensity * exposure();
+    pushScopeMatrix();
+    for (auto & beam : beams) {
+        osci.clear();
+        for (size_t k : beam.pieces) {
+            const Piece & piece = pieces[k];
+            for (auto & run : runs) {
+                // the piece's lines end on its lit samples after the first
+                const size_t first = std::max(piece.start + 2, run[0]);
+                const size_t last = std::min(piece.start + piece.lit + 1, run[1]);
+                if (first < last) osci.addLines(&sx[first - 1], &y[first - 1], bright.data(), int(last - first + 1));
+            }
+        }
+        if (osci.mesh.getNumVertices() > 0) {
+            osci.uRgb = glm::vec3(beam.color.r, beam.color.g, beam.color.b);
+            osci.draw();
+        }
     }
     ofPopMatrix();
 }

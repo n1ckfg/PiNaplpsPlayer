@@ -29,7 +29,12 @@ class NaplpsScopeRenderer {
         // ofApp::draw() places it, onto a width x height canvas.
         void update(const Telidon & telidon, const glm::vec2 & offset, float width, float height);
 
-        // The altered audio drawn by the oscilloscope beam.
+        // The beam sweeping through the altered audio in real time, as a scope
+        // shows it. Fades what's already there by the afterglow, then draws
+        // the stretch of the loop the beam has covered in the last `seconds`,
+        // so draw it into a buffer that's kept from one frame to the next.
+        void drawLive(float seconds);
+        // The whole loop of the altered audio drawn by the beam at once.
         void drawBeams();
         // The altered audio decoded back into strokes.
         void drawStrokes();
@@ -52,6 +57,7 @@ class NaplpsScopeRenderer {
         ofParameter<float> loopFreq;      // Hz: lower gives the drawing more samples
         ofParameter<float> beamSize;      // beam radius, px
         ofParameter<float> beamIntensity; // brightness of a stroke drawn at an even speed
+        ofParameter<float> afterglow;     // seconds for the live beam's trace to fade to half
 
         struct Stats {
             size_t pieces = 0;
@@ -76,7 +82,12 @@ class NaplpsScopeRenderer {
         // cuts a shape (canvas px) into the pieces that fit on the canvas
         void addPieces(std::vector<glm::vec2> & pts, bool closed, const ofColor & color);
         void encode();
+        void groupBeams();
         void buildBeams();
+        // light per sample, so a stroke peaks at about beamIntensity
+        float exposure() const;
+        // the transform from scope units to the canvas
+        void pushScopeMatrix() const;
         void decodeStrokes();
 
         int sampleRate = 44100;
@@ -88,14 +99,19 @@ class NaplpsScopeRenderer {
         std::vector<glm::vec2> labels; // canvas px
         std::vector<float> x, y, z;    // one loop of the altered audio
 
+        // One beam per colour: the beams add up, so the drawing order doesn't matter.
         struct Beam {
             ofFloatColor color;
-            ofMesh mesh;
+            std::vector<size_t> pieces;
+            ofMesh mesh; // the whole loop, for drawBeams()
         };
         OsciMesh osci;
         std::vector<Beam> beams;
-        float beamExposure = 1;
+        std::vector<float> sx;       // x in scope units, which keep the beam round
+        std::vector<float> bright;   // 0 for the jump OsciMesh makes to each run, then 1
+        float stepAverage = 0;       // the beam's average step, in scope units
         bool beamsDirty = true;
+        double playhead = 0;         // where the live beam has got to in the loop, in samples
 
         std::vector<ofPolyline> strokes;
         std::vector<size_t> strokePieces; // the piece each stroke was decoded from
