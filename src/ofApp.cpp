@@ -113,17 +113,12 @@ void ofApp::setup() {
     soloIndex = -1;
     lastRevealed = 0;
 
-    // The effect chain from ofxTwoscilloscope's example-transform, in order,
-    // with LatkTwoscilloscope's low pass and Y delay settings. They all start
-    // off, though: LatkTwoscilloscope turns those two on, but where a Latk
-    // drawing has tens of long strokes a NAPLPS drawing has thousands of short
-    // shapes, and anything that smears samples together smears the jumps
-    // between them right across the picture.
+    // The effect chain from ofxTwoscilloscope's example-transform, in order.
+    // The low pass and the channel delay are set in settings.xml further down;
+    // the rest start off, for the panel and the e key.
     auto & effects = scope.effects;
     auto lowPass = effects.add<XYLowPass>();
-    lowPass->cutoff = 1500;
     auto delay = effects.add<XYChannelDelay>();
-    delay->delayY = 0.6f;
     effects.add<XYHighPass>();
     effects.add<XYEcho>();
     effects.add<XYRingMod>();
@@ -140,6 +135,23 @@ void ofApp::setup() {
     gui.setup(effects.parameters, "effects.xml");
     gui.add(scope.parameters);
     if (ofFile::doesFileExist("effects.xml")) gui.loadFromFile("effects.xml");
+
+    // The two effects example-latk turns on, at its settings by default. They
+    // come after effects.xml, so settings.xml has the last word on them, and
+    // they're clamped to the panel's ranges: past them the delay line is too
+    // short and the filter goes unstable. 0 turns either one off.
+    const float cutoff = settings.getValue("settings:lowpass_cutoff", 1500.0);
+    lowPass->enabled = cutoff > 0;
+    lowPass->cutoff = ofClamp(cutoff, lowPass->cutoff.getMin(), lowPass->cutoff.getMax());
+    lowPass->resonance = ofClamp(settings.getValue("settings:lowpass_resonance", 0.707),
+                                 lowPass->resonance.getMin(), lowPass->resonance.getMax());
+
+    const float delayX = settings.getValue("settings:channel_delay_x", 0.0);
+    const float delayY = settings.getValue("settings:channel_delay_y", 0.6);
+    delay->enabled = delayX > 0 || delayY > 0;
+    delay->delayX = ofClamp(delayX, delay->delayX.getMin(), delay->delayX.getMax());
+    delay->delayY = ofClamp(delayY, delay->delayY.getMin(), delay->delayY.getMax());
+
     for (auto & effect : effects.effects) {
         if (!effect->enabled) gui.getGroup(effect->getName()).minimize();
     }
@@ -660,10 +672,8 @@ void ofApp::keyPressed(int key) {
         case 'm':
             if (player.isAudioOutOpen()) {
                 player.closeAudioOut();
-            } else {
-                // Unmuting a player set to silence means full volume, or
-                // there would still be nothing to hear.
-                if (volume <= 0) volume = 1;
+            } else if (volume > 0) {
+                // At volume 0 the player stays silent, sound card closed.
                 openAudio();
             }
             break;

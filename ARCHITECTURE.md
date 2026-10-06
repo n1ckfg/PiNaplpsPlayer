@@ -26,7 +26,7 @@ A port of LatkTwoscilloscope's `LatkScopeRenderer`, with the 3D projection repla
 
 The effects pass Z through untouched and keep samples in place, so whatever an effect does to a piece's samples, the piece keeps its colour.
 
-The effect chain is the one from ofxTwoscilloscope's `example-transform`, with LatkTwoscilloscope's low pass (1500 Hz) and Y delay (0.6 ms) settings, but every effect starts off, and the loop runs at 1 Hz with a 2 px beam instead of LatkTwoscilloscope's 5 Hz and 3 px. A Latk drawing has tens of long strokes; a NAPLPS drawing can have thousands of short shapes. At 5 Hz most of them get two or three samples. Anything that smears samples together (the low pass, a channel delay) then smears the beam's jumps between shapes across the whole picture. `e` solos the next effect, `n` turns them all off, and the panel (see Configuration) turns on any combination. An `XYscope` loops the altered audio (X left, Y right) on the default sound card at the `volume` setting, and gets the new loop each time the drawing changes. `m` mutes and unmutes it.
+The effect chain is the one from ofxTwoscilloscope's `example-transform`. As in its `example-latk`, the low pass (1500 Hz) and the channel delay (0.6 ms on Y) are on by default, set from `settings.xml` (see Configuration); the rest start off. The loop runs at 1 Hz with a 2 px beam instead of `example-latk`'s 5 Hz and 3 px: a Latk drawing has tens of long strokes, but a NAPLPS drawing can have thousands of short shapes, and at 5 Hz most of them get two or three samples. Even at 1 Hz, anything that smears samples together (the low pass, the channel delay) smears the beam's jumps between shapes across the picture, so dense drawings read best with those two turned down or off. `e` solos the next effect, `n` turns them all off, and the panel turns on any combination. An `XYscope` loops the altered audio (X left, Y right) on the default sound card at the `volume` setting, and gets the new loop each time the drawing changes. `m` mutes and unmutes it.
 
 ### Configuration (`bin/data/settings.xml`)
 Read once in `setup()` via `ofxXmlSettings`, following the same convention as the other Pinopticon apps:
@@ -35,14 +35,16 @@ Read once in `setup()` via `ofxXmlSettings`, following the same convention as th
 - **`fbo_width`**: the width of the `ofFbo` used for caching the drawing.
 - **`fbo_height`**: the height of the `ofFbo` used for caching the drawing.
 - **`debug_view`**: if `1`, enables the debug overlay and point labels on startup.
-- **`volume`**: 0 to 1, the volume of the altered loop on the default sound card. The default, `0`, mutes it and leaves the sound card closed; `m` unmutes it, at full volume if the setting is `0`.
+- **`lowpass_cutoff`** (Hz, 20 to 20000) and **`lowpass_resonance`** (0.3 to 10, 0.707 flat): the low pass filter. A cutoff of `0` turns it off.
+- **`channel_delay_x`** and **`channel_delay_y`** (ms, 0 to 20): the channel delay. Both at `0` turns it off.
+- **`volume`**: 0 to 1, the volume of the altered loop on the default sound card. The default, `0`, mutes it and leaves the sound card closed, and `m` can't unmute it; above `0`, `m` mutes and unmutes it.
 - **`shader_name`**: the image effect applied when the `ofFbo` is drawn to the screen. `setup()` loads `bin/data/shaders/<name>_gl3` on the desktop GL 3.2 context (`_es3` under `TARGET_OPENGLES`, `_gl2` on the fixed pipeline). Fragment shaders read the drawing from `uniform sampler2DRect tex0`, in pixels. The `_es3` pairs are GLSL ES 1.00 instead (no `#version` line, `attribute`/`varying`, `gl_FragColor`), because `ofAppEGLWindow` only creates ES 2 contexts, and they read `uniform sampler2D tex0` in 0..1 coordinates, since ES has no rectangle textures. If the pair doesn't load, the drawing goes to the screen unprocessed.
 - **`tezos_contract`**: the Tezos contract address to poll for on-chain NAPLPS drawings. Empty disables chain reads.
 - **`tzkt_base`**: the TzKT indexer API base URL (e.g. `https://api.shadownet.tzkt.io/v1`).
 - **`tezos_poll_seconds`**: how often the background thread polls TzKT (default `30`).
 - **`tezos_max_bytes`**: maximum size of a single NAPLPS drawing from the chain (default `30000`).
 
-The oscilloscope settings (every effect's parameters, the loop frequency, beam size and beam intensity) are on the `ofxGui` panel, toggled with `g`, which shows the cursor while it's open and ignores the mouse while it's hidden. Saving with the panel's disk icon writes `bin/data/effects.xml`, which `setup()` loads if it exists, so a player can be tuned once and keep its settings.
+The oscilloscope settings (every effect's parameters, the loop frequency, beam size and beam intensity) are on the `ofxGui` panel, toggled with `g`, which shows the cursor while it's open and ignores the mouse while it's hidden. Saving with the panel's disk icon writes `bin/data/effects.xml`, which `setup()` loads if it exists, so a player can be tuned once and keep its settings. The low pass and channel delay settings in `settings.xml` are applied after it, so they override the same values saved there, and out-of-range values are clamped to the panel's ranges.
 
 ### Dead Man's Switch (Slideshow Mode Fallback)
 A player showing a stale drawing looks identical to a crashed one, so `ofApp::checkDeadMansSwitch()` runs every `update()` and watches the clock since the last Network Mode frame:
