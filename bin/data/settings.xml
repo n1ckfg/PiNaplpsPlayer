@@ -36,6 +36,43 @@
          else drifts, and the further from one, the faster. -->
     <ring_mod_freq>150.5</ring_mod_freq>
     <ring_mod_depth>0.1</ring_mod_depth>
+    <!-- Two more ways to keep the drawing moving, both off (0) by default.
+         noise_amount (0 to 0.5) jitters every line a little differently each
+         time the beam comes round, as a fraction of half the screen, and
+         noise_seed (0 to 1000) picks where its random numbers start; after
+         that they carry on, so it only changes the first few moments.
+         rotate_spin (-3600 to 3600 degrees per second) spins the whole
+         drawing, anticlockwise, or clockwise when negative, starting from
+         rotate_angle (-180 to 180 degrees, anticlockwise). Rotate is on when
+         either one isn't 0. -->
+    <noise_amount>0</noise_amount>
+    <noise_seed>1</noise_seed>
+    <rotate_spin>0</rotate_spin>
+    <rotate_angle>0</rotate_angle>
+    <!-- The rest of the effect chain, all off by default: the first setting
+         of each turns it on, and 0 turns it off.
+         High pass, the AC coupling of a cheap sound card, which makes shapes
+         sag and smear: cutoff in Hz (1 to 2000) and resonance (0.3 to 10,
+         0.707 is flat). -->
+    <highpass_cutoff>0</highpass_cutoff>
+    <highpass_resonance>0.707</highpass_resonance>
+    <!-- Echo, which blends in ghost copies from earlier in the loop: mix (0 to
+         1), time in milliseconds (0.1 to 1000) and feedback (0 to 0.95). -->
+    <echo_mix>0</echo_mix>
+    <echo_time>5</echo_time>
+    <echo_feedback>0.5</echo_feedback>
+    <!-- Drive, which pushes shapes out towards a rounded square: gain, 1 to
+         20. -->
+    <drive_gain>0</drive_gain>
+    <!-- Wavefold, which folds the drawing back at the edges, a kaleidoscope:
+         gain, 1 to 8. -->
+    <wavefold_gain>0</wavefold_gain>
+    <!-- Bit crush, which snaps the beam to a coarse grid: bits, 1 to 16, fewer
+         for coarser. -->
+    <bitcrush_bits>0</bitcrush_bits>
+    <!-- Sample & hold, which lowers the sample rate into steps, corners and
+         stray dots: rate in Hz, 50 to 48000. -->
+    <sample_hold_rate>0</sample_hold_rate>
     <!-- The oscilloscope itself. loop_hz (1 to 100) is how many times a
          second the beam draws the whole picture: lower gives every shape more
          samples, and 1 keeps even dense drawings readable, while higher

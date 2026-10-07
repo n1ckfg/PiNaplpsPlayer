@@ -114,20 +114,19 @@ void ofApp::setup() {
     lastRevealed = 0;
 
     // The effect chain from ofxTwoscilloscope's example-transform, in order.
-    // The low pass and the channel delay are set in settings.xml further down;
-    // the rest start off, for the panel and the e key.
+    // settings.xml turns them on and sets them, further down.
     auto & effects = scope.effects;
     auto lowPass = effects.add<XYLowPass>();
     auto delay = effects.add<XYChannelDelay>();
-    effects.add<XYHighPass>();
-    effects.add<XYEcho>();
+    auto highPass = effects.add<XYHighPass>();
+    auto echo = effects.add<XYEcho>();
     auto ringMod = effects.add<XYRingMod>();
-    effects.add<XYRotate>();
-    effects.add<XYDrive>();
-    effects.add<XYWavefold>();
-    effects.add<XYBitCrush>();
-    effects.add<XYSampleHold>();
-    effects.add<XYNoise>();
+    auto rotate = effects.add<XYRotate>();
+    auto drive = effects.add<XYDrive>();
+    auto wavefold = effects.add<XYWavefold>();
+    auto bitCrush = effects.add<XYBitCrush>();
+    auto sampleHold = effects.add<XYSampleHold>();
+    auto noise = effects.add<XYNoise>();
     for (auto & effect : effects.effects) effect->enabled = false;
 
     // Every setting is on the panel. Whatever was saved from it with its disk
@@ -136,39 +135,63 @@ void ofApp::setup() {
     gui.add(scope.parameters);
     if (ofFile::doesFileExist("effects.xml")) gui.loadFromFile("effects.xml");
 
-    // The two effects example-latk turns on, at its settings by default. They
-    // come after effects.xml, so settings.xml has the last word on them, and
-    // they're clamped to the panel's ranges: past them the delay line is too
-    // short and the filter goes unstable. 0 turns either one off.
-    const float cutoff = settings.getValue("settings:lowpass_cutoff", 1500.0);
-    lowPass->enabled = cutoff > 0;
-    lowPass->cutoff = ofClamp(cutoff, lowPass->cutoff.getMin(), lowPass->cutoff.getMax());
-    lowPass->resonance = ofClamp(settings.getValue("settings:lowpass_resonance", 0.707),
-                                 lowPass->resonance.getMin(), lowPass->resonance.getMax());
+    // Every effect's settings come from settings.xml. They come after
+    // effects.xml, so settings.xml has the last word on them, and they're
+    // clamped to the panel's ranges: past them the delay lines are too short
+    // and the filters go unstable.
+    auto read = [&](auto & param, const std::string & name, double fallback) {
+        param = ofClamp(settings.getValue("settings:" + name, fallback), param.getMin(), param.getMax());
+    };
+    // One setting turns each effect on, and 0 turns it off, leaving the
+    // panel's own value for trying it there.
+    auto turnOn = [&](XYEffect & effect, ofParameter<float> & param, const std::string & name, double fallback) {
+        const float value = settings.getValue("settings:" + name, fallback);
+        effect.enabled = value != 0;
+        if (effect.enabled) param = ofClamp(value, param.getMin(), param.getMax());
+    };
 
-    const float delayX = settings.getValue("settings:channel_delay_x", 0.0);
-    const float delayY = settings.getValue("settings:channel_delay_y", 0.6);
-    delay->enabled = delayX > 0 || delayY > 0;
-    delay->delayX = ofClamp(delayX, delay->delayX.getMin(), delay->delayX.getMax());
-    delay->delayY = ofClamp(delayY, delay->delayY.getMin(), delay->delayY.getMax());
+    // the two effects example-latk turns on, at its settings
+    turnOn(*lowPass, lowPass->cutoff, "lowpass_cutoff", 1500);
+    read(lowPass->resonance, "lowpass_resonance", 0.707);
+    read(delay->delayX, "channel_delay_x", 0);
+    read(delay->delayY, "channel_delay_y", 0.6);
+    delay->enabled = delay->delayX > 0 || delay->delayY > 0;
 
     // The ring mod keeps the drawing moving once it's drawn. The effects play
     // the loop continuously, so at a frequency that isn't a whole multiple of
     // the loop's, each shape lands on a slightly different part of the
     // modulation every time round, and drifts.
-    const float ringDepth = settings.getValue("settings:ring_mod_depth", 0.1);
-    ringMod->enabled = ringDepth > 0;
-    ringMod->depth = ofClamp(ringDepth, ringMod->depth.getMin(), ringMod->depth.getMax());
-    ringMod->freq = ofClamp(settings.getValue("settings:ring_mod_freq", 150.5),
-                            ringMod->freq.getMin(), ringMod->freq.getMax());
+    turnOn(*ringMod, ringMod->depth, "ring_mod_depth", 0.1);
+    read(ringMod->freq, "ring_mod_freq", 150.5);
+
+    // Two more ways to keep it moving: noise jitters the lines differently
+    // every time round, and rotate spins the whole drawing (degrees per second
+    // anticlockwise, negative for clockwise).
+    turnOn(*noise, noise->amount, "noise_amount", 0);
+    // The seed only counts when the effects start from scratch: after that
+    // the noise carries on from wherever it's got to.
+    read(noise->seed, "noise_seed", 1);
+    // Rotate starts upright, rather than at XYRotate's 30 degrees, and a
+    // fixed angle turns it on as well as a spin.
+    read(rotate->angle, "rotate_angle", 0);
+    read(rotate->spin, "rotate_spin", 0);
+    rotate->enabled = rotate->angle != 0 || rotate->spin != 0;
+
+    // and the rest of the chain, all off by default
+    turnOn(*highPass, highPass->cutoff, "highpass_cutoff", 0);
+    read(highPass->resonance, "highpass_resonance", 0.707);
+    turnOn(*echo, echo->mix, "echo_mix", 0);
+    read(echo->time, "echo_time", 5);
+    read(echo->feedback, "echo_feedback", 0.5);
+    turnOn(*drive, drive->gain, "drive_gain", 0);
+    turnOn(*wavefold, wavefold->gain, "wavefold_gain", 0);
+    turnOn(*bitCrush, bitCrush->bits, "bitcrush_bits", 0);
+    turnOn(*sampleHold, sampleHold->rate, "sample_hold_rate", 0);
 
     // The scope's own settings, the same way, at example-latk's by default.
-    scope.loopFreq = ofClamp(settings.getValue("settings:loop_hz", 5.0),
-                             scope.loopFreq.getMin(), scope.loopFreq.getMax());
-    scope.beamSize = ofClamp(settings.getValue("settings:beam_size", 3.0),
-                             scope.beamSize.getMin(), scope.beamSize.getMax());
-    scope.beamIntensity = ofClamp(settings.getValue("settings:beam_intensity", 1.0),
-                                  scope.beamIntensity.getMin(), scope.beamIntensity.getMax());
+    read(scope.loopFreq, "loop_hz", 5);
+    read(scope.beamSize, "beam_size", 3);
+    read(scope.beamIntensity, "beam_intensity", 1);
 
     for (auto & effect : effects.effects) {
         if (!effect->enabled) gui.getGroup(effect->getName()).minimize();
