@@ -56,6 +56,91 @@ ofPath arcPath(const std::vector<glm::vec2> & pts, float w, float h) {
     return path;
 }
 
+// ofMesh has no move constructor, so std::swap() on two of them copies both.
+// Their vertices and normals are all OsciMesh adds to and draws.
+void swapLines(ofMesh & a, ofMesh & b) {
+    a.getVertices().swap(b.getVertices());
+    a.getNormals().swap(b.getNormals());
+}
+
+// OsciMesh's beam, with its quads built on the GPU: the four corners of a
+// segment's quad all hold its two ends, and gl_VertexID says which corner each
+// one is. The index buffer makes them the two triangles OsciMesh::addLine()
+// would add, sharing two corners, so each corner is shaded once.
+const std::string SEGMENT_BEAM_VERT = R"GLSL(
+    uniform mat4 modelViewProjectionMatrix;
+    uniform float uSize;
+    in vec4 position; // x0, y0, x1, y1
+    in float color;   // 24-bit, or -1 for dark
+    out vec3 vUvl;
+    out vec3 vRgb;
+
+    void main() {
+        vUvl = vec3(0.0);
+        vRgb = vec3(0.0);
+        if (color < 0.0) {
+            // dark from here to the next sample: all four corners on one
+            // point, off screen, so nothing is drawn
+            gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+            return;
+        }
+
+        vec2 p0 = position.xy;
+        vec2 p1 = position.zw;
+        vec2 dir = p1 - p0;
+        float len = length(dir);
+        dir = len > 1E-6 ? dir / len : vec2(1.0, 0.0);
+        dir *= uSize;
+        vec2 norm = vec2(-dir.y, dir.x);
+
+        // corners 2 and 3 are past p1, and 1 and 3 on the normal's side
+        int corner = gl_VertexID % 4;
+        bool end = corner >= 2;
+        bool side = corner == 1 || corner == 3;
+        vec2 p = (end ? p1 + dir : p0 - dir) + (side ? norm : -norm);
+        vUvl = vec3(end ? len + uSize : -uSize, side ? uSize : -uSize, len);
+
+        uint c = uint(color);
+        vRgb = vec3(float((c >> 16u) & 255u), float((c >> 8u) & 255u), float(c & 255u)) / 255.0;
+        gl_Position = modelViewProjectionMatrix * vec4(p, 0.0, 1.0);
+    }
+)GLSL";
+
+// OsciMesh's BEAM_FUNCTIONS, with the colour from the vertex shader
+const std::string SEGMENT_BEAM_FRAG = R"GLSL(
+    uniform float uSize;
+    uniform float uIntensity;
+    in vec3 vUvl;
+    in vec3 vRgb;
+    out vec4 fragColor;
+
+    #define SQRT2 1.4142135623730951
+    #define TAUR 2.5066282746310002
+
+    float erfApprox(float x) {
+        float s = sign(x), a = abs(x);
+        x = 1.0 + (0.278393 + (0.230389 + 0.000972 * a + 0.078108 * a * a) * a) * a;
+        x *= x;
+        return s - s / (x * x);
+    }
+
+    void main() {
+        float len = vUvl.z;
+        vec2 xy = vUvl.xy;
+        float sigma = uSize / 3.0;
+        float b;
+        if (len < 1E-6) {
+            b = exp(-dot(xy, xy) / (2.0 * sigma * sigma));
+        } else {
+            b = erfApprox(xy.x / SQRT2 / sigma) - erfApprox((xy.x - len) / SQRT2 / sigma);
+            b *= exp(-xy.y * xy.y / (2.0 * sigma * sigma)) * sigma * TAUR / (2.0 * len);
+        }
+        b *= uIntensity;
+        // where the beam is brightest it burns towards white
+        fragColor = vec4(vRgb * b + vec3(max(b - 1.0, 0.0) * 0.35), 1.0);
+    }
+)GLSL";
+
 }
 
 //--------------------------------------------------------------
@@ -336,6 +421,8 @@ void NaplpsScopeRenderer::prime() {
     colors = dryColors;
     playhead = 0;
     pending = 0;
+    dirtyStart = 0;
+    dirtyCount = n;
 }
 
 //--------------------------------------------------------------
@@ -375,10 +462,25 @@ bool NaplpsScopeRenderer::advance(float seconds) {
     playhead = (playhead + count) % n;
 
     if (changed) {
+        markDirty((playhead + n - count) % n, count);
         beamsDirty = true;
         strokesDirty = true;
     }
     return changed;
+}
+
+//--------------------------------------------------------------
+void NaplpsScopeRenderer::markDirty(size_t start, size_t count) {
+    // Each stretch the effects play starts where the last one ended, so
+    // together they're one stretch, from the first one's start.
+    const size_t n = x.size();
+    if (dirtyCount == 0) {
+        dirtyStart = start;
+        dirtyCount = count;
+    } else {
+        dirtyCount = std::max(dirtyCount, (start + n - dirtyStart) % n + count);
+    }
+    dirtyCount = std::min(dirtyCount, n);
 }
 
 //--------------------------------------------------------------
@@ -393,51 +495,170 @@ void NaplpsScopeRenderer::buildBeams() {
     beamsDirty = false;
     beams.clear();
     if (x.size() != cycleFrames || tags.size() != x.size()) return;
+    if (!segmentBeamsTried) segmentBeams = setupSegmentBeams();
+    const size_t n = x.size();
 
     // Scope units: -1..1 up the canvas, and as far across it as its shape
     // allows, so the beam stays round on any canvas.
     const float aspect = canvas.width / canvas.height;
-    std::vector<float> sx(x.size());
-    for (size_t i = 0; i < x.size(); i++) sx[i] = x[i] * aspect;
+    std::vector<float> sx(n);
+    for (size_t i = 0; i < n; i++) sx[i] = x[i] * aspect;
     osci.uSize = beamSize / (canvas.height / 2);
 
-    // OsciMesh joins each run of samples to the end of the last one, lit as
-    // the run's first sample. Keep that jump dark.
-    std::vector<float> bright(x.size(), 1);
-    bright[0] = 0;
-
-    // Each run of lit samples from one piece is one line of the beam, and
-    // there's one mesh per colour: the beams add up, so the drawing order
-    // doesn't matter.
-    std::map<int, size_t> beamOfColor;
-    double stepSum = 0;
-    size_t steps = 0;
-    for (size_t i = 0; i < tags.size();) {
-        size_t end = i + 1;
-        while (end < tags.size() && tags[end] == tags[i]) end++;
-        if (tags[i] != 0 && end - i >= 2) {
-            auto found = beamOfColor.find(colors[i].getHex());
-            if (found == beamOfColor.end()) {
-                found = beamOfColor.emplace(colors[i].getHex(), beams.size()).first;
-                osci.clear();
-                beams.push_back({ colors[i], osci.mesh });
-            }
-            std::swap(beams[found->second].mesh, osci.mesh);
-            osci.addLines(&sx[i], &y[i], bright.data(), int(end - i));
-            std::swap(beams[found->second].mesh, osci.mesh);
-            for (size_t j = i + 1; j < end; j++) {
-                stepSum += glm::distance(glm::vec2(sx[j - 1], y[j - 1]), glm::vec2(sx[j], y[j]));
-                steps++;
-            }
-        }
-        i = end;
-    }
+    // The beam is lit from one sample to the next when both are from the
+    // same piece, so each run of lit samples with one tag is one line.
+    auto lit = [&](size_t i) { return tags[i] != 0 && i + 1 < n && tags[i + 1] == tags[i]; };
 
     // A beam leaves less light on a line the faster it moves, so a longer
     // drawing or a shorter loop comes out dimmer. Scale the light by the
     // average step, so a stroke peaks at about beamIntensity either way.
+    double stepSum = 0;
+    size_t steps = 0;
+    for (size_t i = 0; i + 1 < n; i++) {
+        if (!lit(i)) continue;
+        stepSum += glm::distance(glm::vec2(sx[i], y[i]), glm::vec2(sx[i + 1], y[i + 1]));
+        steps++;
+    }
     const float sigma = osci.uSize / 3;
     beamExposure = steps > 0 ? float(stepSum / steps) / (sigma * std::sqrt(TWO_PI)) : 1;
+
+    if (segmentBeams) {
+        updateSegments(sx, aspect);
+        return;
+    }
+
+    auto forEachRun = [&](auto fn) {
+        for (size_t i = 0; i < n;) {
+            size_t end = i + 1;
+            while (end < n && tags[end] == tags[i]) end++;
+            if (tags[i] != 0 && end - i >= 2) fn(i, end);
+            i = end;
+        }
+    };
+
+    // OsciMesh joins each run of samples to the end of the last one, lit as
+    // the run's first sample. Keep that jump dark.
+    std::vector<float> bright(n, 1);
+    bright[0] = 0;
+
+    // addLines() reserves exactly what it adds, so adding run after run would
+    // copy the whole mesh every time. Reserve each colour's six vertices a
+    // sample up front instead.
+    std::map<int, size_t> verticesOfColor;
+    forEachRun([&](size_t i, size_t end) { verticesOfColor[colors[i].getHex()] += 6 * (end - i); });
+
+    // One mesh per colour: the beams add up, so the drawing order doesn't matter.
+    std::map<int, size_t> beamOfColor;
+    forEachRun([&](size_t i, size_t end) {
+        auto found = beamOfColor.find(colors[i].getHex());
+        if (found == beamOfColor.end()) {
+            found = beamOfColor.emplace(colors[i].getHex(), beams.size()).first;
+            osci.clear();
+            beams.push_back({ colors[i], osci.mesh });
+            beams.back().mesh.getVertices().reserve(verticesOfColor[colors[i].getHex()]);
+            beams.back().mesh.getNormals().reserve(verticesOfColor[colors[i].getHex()]);
+        }
+        swapLines(beams[found->second].mesh, osci.mesh);
+        osci.addLines(&sx[i], &y[i], bright.data(), int(end - i));
+        swapLines(beams[found->second].mesh, osci.mesh);
+    });
+}
+
+//--------------------------------------------------------------
+bool NaplpsScopeRenderer::setupSegmentBeams() {
+    segmentBeamsTried = true;
+#ifdef TARGET_OPENGLES
+    return false;
+#else
+    if (!ofIsGLProgrammableRenderer()) return false;
+    auto renderer = ofGetGLRenderer();
+    const std::string glsl = ofGLSLVersionFromGL(renderer->getGLVersionMajor(), renderer->getGLVersionMinor());
+    if (ofToInt(glsl) < 130) return false;
+
+    const std::string version = "#version " + glsl + "\n";
+    bool ok = segmentShader.setupShaderFromSource(GL_VERTEX_SHADER, version + SEGMENT_BEAM_VERT) &&
+              segmentShader.setupShaderFromSource(GL_FRAGMENT_SHADER, version + SEGMENT_BEAM_FRAG);
+    if (ok) {
+        segmentShader.bindDefaults();
+        ok = segmentShader.linkProgram();
+    }
+    if (!ok) {
+        ofLogWarning("NaplpsScopeRenderer") << "couldn't compile the segment beam shader, building meshes instead";
+        return false;
+    }
+
+    // the ends in the position attribute, and the colour in the color one
+    segmentBuffer.allocate();
+    segmentVbo.setAttributeBuffer(ofShader::POSITION_ATTRIBUTE, segmentBuffer, 4, sizeof(SegmentVertex), offsetof(SegmentVertex, ends));
+    segmentVbo.setAttributeBuffer(ofShader::COLOR_ATTRIBUTE, segmentBuffer, 1, sizeof(SegmentVertex), offsetof(SegmentVertex, rgb));
+    return true;
+#endif
+}
+
+//--------------------------------------------------------------
+void NaplpsScopeRenderer::updateSegments(const std::vector<float> & sx, float aspect) {
+    const size_t n = x.size();
+    const size_t segments = n - 1;
+
+    auto write = [&](size_t i) {
+        const bool lit = tags[i] != 0 && tags[i + 1] == tags[i];
+        const SegmentVertex vertex { glm::vec4(sx[i], y[i], sx[i + 1], y[i + 1]), lit ? float(colors[i].getHex()) : -1.0f };
+        std::fill_n(&segmentVertices[i * 4], 4, vertex);
+    };
+
+    // A new loop length or canvas shape moves every segment, and the buffer
+    // is sized for the new loop.
+    if (segmentVertices.size() != segments * 4 || segmentAspect != aspect) {
+        if (segmentVertices.size() != segments * 4) {
+            // corners 0, 1, 2 and 1, 2, 3 of every quad, as OsciMesh::addLine()
+            std::vector<ofIndexType> indices(segments * 6);
+            for (size_t i = 0; i < segments; i++) {
+                const ofIndexType corner = ofIndexType(i * 4);
+                const ofIndexType quad[6] = { corner, corner + 1, corner + 2, corner + 1, corner + 2, corner + 3 };
+                std::copy(quad, quad + 6, &indices[i * 6]);
+            }
+            segmentVbo.setIndexData(indices.data(), int(indices.size()), GL_STATIC_DRAW);
+        }
+        segmentAspect = aspect;
+        segmentVertices.resize(segments * 4);
+        for (size_t i = 0; i < segments; i++) write(i);
+        segmentBuffer.setData(segmentVertices.size() * sizeof(SegmentVertex), segmentVertices.data(), GL_DYNAMIC_DRAW);
+        dirtyCount = 0;
+        return;
+    }
+
+    // segments [from, to)
+    auto update = [&](size_t from, size_t to) {
+        if (from >= to) return;
+        for (size_t i = from; i < to; i++) write(i);
+        segmentBuffer.updateData(from * 4 * sizeof(SegmentVertex), (to - from) * 4 * sizeof(SegmentVertex), &segmentVertices[from * 4]);
+    };
+    if (dirtyCount >= n) {
+        update(0, segments);
+    } else if (dirtyCount > 0) {
+        // from the segment into the first sample that changed to the one out
+        // of the last, round the loop, where there's no segment from the
+        // last sample back to the first
+        const size_t first = (dirtyStart + n - 1) % n;
+        const size_t last = first + dirtyCount + 1;
+        update(first, std::min(last, segments));
+        if (last > n) update(0, last - n);
+    }
+    dirtyCount = 0;
+}
+
+//--------------------------------------------------------------
+void NaplpsScopeRenderer::drawSegmentBeams() {
+    if (segmentVertices.empty()) return;
+
+    ofPushStyle();
+    ofEnableBlendMode(OF_BLENDMODE_ADD);
+    segmentShader.begin();
+    segmentShader.setUniform1f("uSize", osci.uSize);
+    segmentShader.setUniform1f("uIntensity", beamIntensity * beamExposure);
+    segmentVbo.drawElements(GL_TRIANGLES, int(segmentVertices.size() / 4 * 6));
+    segmentShader.end();
+    ofPopStyle();
 }
 
 //--------------------------------------------------------------
@@ -448,12 +669,16 @@ void NaplpsScopeRenderer::drawBeams() {
     ofTranslate(canvas.getCenter());
     // scope +Y is up
     ofScale(canvas.height / 2, -canvas.height / 2);
-    osci.uIntensity = beamIntensity * beamExposure;
-    for (auto & beam : beams) {
-        std::swap(osci.mesh, beam.mesh);
-        osci.uRgb = glm::vec3(beam.color.r, beam.color.g, beam.color.b);
-        osci.draw();
-        std::swap(osci.mesh, beam.mesh);
+    if (segmentBeams) {
+        drawSegmentBeams();
+    } else {
+        osci.uIntensity = beamIntensity * beamExposure;
+        for (auto & beam : beams) {
+            swapLines(osci.mesh, beam.mesh);
+            osci.uRgb = glm::vec3(beam.color.r, beam.color.g, beam.color.b);
+            osci.draw();
+            swapLines(osci.mesh, beam.mesh);
+        }
     }
     ofPopMatrix();
 }

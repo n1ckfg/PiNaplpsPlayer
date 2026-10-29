@@ -12,7 +12,7 @@
     <!-- Image effect applied as the drawing goes to the screen: the name of a
          shader pair in bin/data/shaders, without the _gl3/_es3 suffix. A name
          that doesn't load leaves the drawing unprocessed. -->
-    <shader_name>vhsc</shader_name>
+    <shader_name>z_vhsc</shader_name>
     <!-- Volume, 0 to 1, of the drawing played out of the default sound card
          as XY oscilloscope audio (X left, Y right), to drive a real scope in
          X-Y mode. 0 mutes it and leaves the sound card closed, and the m key
@@ -21,14 +21,14 @@
     <!-- Low pass filter on the oscilloscope audio, which rounds corners and
          swallows small detail: cutoff in Hz (20 to 20000, 0 turns it off) and
          resonance (0.3 to 10, 0.707 is flat). -->
-    <lowpass_cutoff>1500</lowpass_cutoff>
-    <lowpass_resonance>0.707</lowpass_resonance>
+    <lowpass_cutoff>5500</lowpass_cutoff>
+    <lowpass_resonance>0.1707</lowpass_resonance>
     <!-- Channel delay, which delays X or Y to shear the drawing and open its
          lines into loops: in milliseconds, 0 to 20. Both at 0 turns it off.
          Like the low pass, it smears dense drawings, so lower values (or 0)
          keep them readable. -->
     <channel_delay_x>0</channel_delay_x>
-    <channel_delay_y>0.6</channel_delay_y>
+    <channel_delay_y>0.16</channel_delay_y>
     <!-- Ring mod, which keeps the drawing moving once it's drawn by pulling
          its shapes in towards the center and letting them go again: depth
          (0 to 1, 0 turns it off) is how far, and freq (0.1 to 2000 Hz) how
@@ -55,10 +55,10 @@
          sag and smear: cutoff in Hz (1 to 2000) and resonance (0.3 to 10,
          0.707 is flat). -->
     <highpass_cutoff>0</highpass_cutoff>
-    <highpass_resonance>0.707</highpass_resonance>
+    <highpass_resonance>0.1707</highpass_resonance>
     <!-- Echo, which blends in ghost copies from earlier in the loop: mix (0 to
          1), time in milliseconds (0.1 to 1000) and feedback (0 to 0.95). -->
-    <echo_mix>0</echo_mix>
+    <echo_mix>0.1</echo_mix>
     <echo_time>5</echo_time>
     <echo_feedback>0.5</echo_feedback>
     <!-- Drive, which pushes shapes out towards a rounded square: gain, 1 to
@@ -80,8 +80,8 @@
          pixels (0.5 to 12), and beam_intensity its brightness (0 to 4). These
          and the effect settings above can be tried out live on the panel (g),
          and override the same settings saved from it in effects.xml. -->
-    <loop_hz>5</loop_hz>
-    <beam_size>3</beam_size>
+    <loop_hz>1</loop_hz>
+    <beam_size>1</beam_size>
     <beam_intensity>1</beam_intensity>
     <debug_view>0</debug_view>
     <!-- Tezos chain read: poll TzKT for NAPLPS drawings stored on-chain.

@@ -86,6 +86,16 @@ class NaplpsScopeRenderer {
         // starts the effects from scratch on the current loop
         void prime();
         void buildBeams();
+        // The beams built on the GPU, where GLSL 1.30 can number the
+        // vertices. Returns false on the GLES and GL 2 renderers, which build
+        // them into OsciMesh instead.
+        bool setupSegmentBeams();
+        // brings the segments the effects have rewritten up to date
+        void updateSegments(const std::vector<float> & sx, float aspect);
+        void drawSegmentBeams();
+        // the samples from start, round the loop, have changed since the
+        // beams were last built
+        void markDirty(size_t start, size_t count);
         void decodeStrokes();
 
         int sampleRate = 44100;
@@ -119,6 +129,26 @@ class NaplpsScopeRenderer {
         std::vector<Beam> beams;
         float beamExposure = 1;
         bool beamsDirty = true;
+
+        // The beams on the GPU: the four corners of each segment of the
+        // altered loop, from one sample to the next, all holding its two ends
+        // and colour, so the vertex shader can build OsciMesh's quad from
+        // them, and a fixed index buffer joining them into two triangles.
+        // They're kept in the loop's order, so when the effects rewrite a
+        // stretch of samples, only that stretch's segments are uploaded.
+        struct SegmentVertex {
+            glm::vec4 ends;  // x0, y0, x1, y1 in scope units
+            float rgb;       // the colour as a 24-bit integer, or -1 where the beam is dark
+        };
+        bool segmentBeamsTried = false;
+        bool segmentBeams = false;
+        ofShader segmentShader;
+        ofBufferObject segmentBuffer;
+        ofVbo segmentVbo;
+        std::vector<SegmentVertex> segmentVertices;
+        float segmentAspect = 0;
+        size_t dirtyStart = 0;
+        size_t dirtyCount = 0;
 
         std::vector<ofPolyline> strokes;
         std::vector<ofColor> strokeColors;
